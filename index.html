@@ -143,6 +143,14 @@ main { display: grid; gap: 18px; padding-top: 18px; }
 .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .card { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
 .agent-main { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 12px; align-items: center; padding: 10px 12px; }
+.agent-main.no-rank { grid-template-columns: 1fr auto; }
+.agent-main.no-rank .agent-ctl { grid-column: 1 / -1; }
+.agent-name b .nf { font: inherit; color: inherit; letter-spacing: .02em; }
+.appel-head { display: grid; gap: 6px; }
+.seg.team button { display: grid; gap: 3px; align-content: center; font-size: 20px; min-height: 48px; }
+.seg.team small { font: 500 10px/1 var(--f-body); letter-spacing: .02em; text-transform: none; opacity: .8; }
+.chips.assign { flex: 1 1 100%; gap: 6px; }
+.chips.assign .chip { min-width: 44px; justify-content: center; font-weight: 600; }
 .rank { font: 600 13px/1 var(--f-mono); color: var(--muted); min-width: 2ch; text-align: right; }
 .agent-name { text-align: left; background: none; border: 0; padding: 0; min-width: 0; display: grid; gap: 2px; }
 .agent-name b { font-weight: 600; font-size: 15px; }
@@ -489,6 +497,8 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     loaded: { agents: false, engins: false }, store: null, db: null, readOnly: false, dirty: false,
     draftAgent: null, draftEngin: null, draftError: '', focusAfter: '',
     quick: null, quickVal: '', quickRVal: '', quickError: '', quickShowR: false, transfer: null,
+    effView: (() => { try { return localStorage.getItem('armement-vue-effectif') || 'appel'; } catch (e) { return 'appel'; } })(),
+    equipeVue: null, appelTab: 'equipe',
     bulk: null, // { val, sel: Set, err, all }
   };
 
@@ -529,6 +539,33 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     if (dt.getMonth() !== M - 1 || dt.getDate() !== J) return { err: `Le ${pad(J)}/${pad(M)} n'existe pas : vérifie le jour et le mois.` };
     return { iso: dt.toISOString() };
   }
+  /* ---------- Équipes de garde ---------- */
+  const EQUIPES = ['A', 'B', 'C', 'D'];
+  // Cycle : l'équipe A prend la garde le vendredi 06/11/2026 à 19h, puis B, C, D chaque vendredi.
+  // Le vendredi à partir de 7h, on affiche déjà l'équipe qui prend la garde le soir.
+  const GARDE_REF = Date.UTC(2026, 10, 6);
+  const JOURS = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
+  function semaineGarde(d = new Date()) {
+    const j = new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getHours() < 7 ? 1 : 0));
+    return Math.floor((Date.UTC(j.getFullYear(), j.getMonth(), j.getDate()) - GARDE_REF) / (7 * 864e5));
+  }
+  const mod4 = n => ((n % 4) + 4) % 4;
+  function equipeDeGarde(d) { return EQUIPES[mod4(semaineGarde(d))]; }
+  function periodeGarde(eq) {
+    const w = semaineGarde(), k = mod4(EQUIPES.indexOf(eq) - mod4(w));
+    const deb = new Date(GARDE_REF + (w + k) * 7 * 864e5), fin = new Date(deb.getTime() + 7 * 864e5);
+    const f = (x, h) => `${JOURS[x.getUTCDay()]} ${pad(x.getUTCDate())}/${pad(x.getUTCMonth() + 1)} ${h}`;
+    return { texte: `${f(deb, '19h')} → ${f(fin, '7h')}`, quand: k === 0 ? 'cette semaine' : k === 1 ? 'la semaine prochaine' : `dans ${k} semaines` };
+  }
+  // Nom de famille : le mot écrit en capitales s'il y en a un (« Théo PAPAMICAEL »), sinon le dernier mot
+  function nomFamille(a) {
+    const t = String(a.nom || '').trim().split(/\s+/);
+    const caps = t.filter(w => w.length > 1 && w === w.toUpperCase() && w !== w.toLowerCase());
+    return caps.length ? caps.join(' ') : (t[t.length - 1] || '');
+  }
+  function prenoms(a) { const nf = nomFamille(a); return String(a.nom || '').split(/\s+/).filter(w => !nf.split(' ').includes(w)).join(' '); }
+  const byFamille = (a, b) => nomFamille(a).localeCompare(nomFamille(b), 'fr', { sensitivity: 'base' }) || prenoms(a).localeCompare(prenoms(b), 'fr');
+  function nomHtml(a) { return `<span class="nf">${esc(nomFamille(a).toLocaleUpperCase('fr'))}</span> ${esc(prenoms(a))}`; }
   function retourValide(a) { return !!a.retour && (!a.dernierDepart || Date.parse(a.retour) >= Date.parse(a.dernierDepart)); }
   function retourDuDepart(iso) { const x = S.agents.find(o => o.dernierDepart === iso && retourValide(o)); return x ? x.retour : null; }
   function toLocalInput(iso) { if (!iso) return ''; const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
@@ -766,7 +803,8 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     return { type, nom: uniqueNom(m.nom), mission: m.mission, roles: JSON.parse(JSON.stringify(m.roles)), degrade: m.degrade ? JSON.parse(JSON.stringify(m.degrade)) : null, nomAuto: true };
   }
   function newDraftAgent(statut = 'dispo') {
-    return { nom: '', grade: '?', gradeEq: '', cod: [], ci: [], equipierSeul: false, vsavSeul: false, statut, dernierDepart: null };
+    const equipe = S.effView !== 'tour' && S.appelTab !== 'autres' ? (S.equipeVue || equipeDeGarde()) : '';
+    return { nom: '', grade: '?', gradeEq: '', equipe, cod: [], ci: [], equipierSeul: false, vsavSeul: false, statut, dernierDepart: null };
   }
 
   /* ---------- Sélecteurs à pastilles ---------- */
@@ -782,7 +820,6 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
   /* ---------- Effectif ---------- */
   function bulkCard() {
     const B = S.bulk, n = B.sel.size;
-    const byNom = (a, b) => a.nom.localeCompare(b.nom, 'fr');
     const groups = [
       ['Astreinte', S.agents.filter(a => a.statut === 'astreinte')],
       ['Disponible', S.agents.filter(a => a.statut === 'dispo')],
@@ -812,7 +849,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
         </div>
         <div class="fgroup">
           <span class="flabel">2. Agents partis · ${n} coché${n > 1 ? 's' : ''}</span>
-          ${groups.filter(([, l]) => l.length).map(([titre, l]) => `<div class="bulk-group"><span class="hint">${titre}</span><div class="chips">${l.sort(byNom).map(chip).join('')}</div></div>`).join('')}
+          ${groups.filter(([, l]) => l.length).map(([titre, l]) => `<div class="bulk-group"><span class="hint">${titre}</span><div class="chips">${l.sort(byFamille).map(chip).join('')}</div></div>`).join('')}
           ${autres.length ? `<div><button type="button" class="linkbtn" data-act="bulk-all">${B.all ? 'Masquer les indisponibles' : `Afficher les indisponibles (${autres.length})`}</button></div>` : ''}
         </div>
         ${B.err ? `<p class="err" role="alert">${esc(B.err)}</p>` : ''}
@@ -857,14 +894,59 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
       ${S.bulk ? '' : `<button class="btn" data-act="bulk-open" ${S.readOnly ? 'disabled' : ''}>Saisir un départ</button>`}</div></div>`;
     if (S.bulk) html += bulkCard();
     if (S.draftAgent) html += agentDraftCard();
-    html += counts();
+    html += `<div class="seg" role="tablist" aria-label="Affichage de l'effectif">
+      <button role="tab" data-act="eff-view" data-v="appel" aria-selected="${S.effView !== 'tour'}">Appel de garde</button>
+      <button role="tab" data-act="eff-view" data-v="tour" aria-selected="${S.effView === 'tour'}">Tour de départ</button>
+    </div>`;
     if (!S.agents.length) {
-      return html + (S.draftAgent ? '' : `<div class="card empty"><p class="muted">Aucun agent enregistré. Ajoute les agents du centre avec leur grade, leurs COD et leurs contre-indications.</p></div>`);
+      return html + (S.draftAgent ? '' : `<div class="card empty"><p class="muted">Aucun agent enregistré. Ajoute les agents du centre avec leur grade, leurs COD, leur équipe et leurs contre-indications.</p></div>`);
     }
+    if (S.effView !== 'tour') return html + viewAppel();
+    html += counts();
     html += `<p class="muted small" style="margin:0">L'ordre ci-dessous est le tour de départ : astreinte, puis disponible ; à statut égal, le plus ancien départ (ou le premier rentré si l'heure de retour est renseignée). Touche un nom pour changer son dernier départ, « Fiche » pour le reste.</p>`;
     if (avail.length) html += `<div class="group-title">Tour de départ</div><ul class="list">${avail.map((a, i) => agentRow(a, i + 1)).join('')}</ul>`;
     if (inter.length) html += `<div class="group-title">En intervention</div><ul class="list">${inter.map(a => agentRow(a)).join('')}</ul>`;
     if (indispo.length) html += `<div class="group-title">Indisponibles</div><ul class="list">${indispo.map(a => agentRow(a)).join('')}</ul>`;
+    return html;
+  }
+
+  function viewAppel() {
+    const auto = equipeDeGarde(), T = S.equipeVue || auto, per = periodeGarde(T);
+    const membres = S.agents.filter(a => a.equipe === T).sort(byFamille);
+    const autres = S.agents.filter(a => a.equipe !== T);
+    const sansEquipe = S.agents.filter(a => !EQUIPES.includes(a.equipe)).sort(byFamille);
+    const renforts = autres.filter(a => ['astreinte', 'dispo', 'inter'].includes(a.statut)).sort(byFamille);
+    const c = { astreinte: 0, dispo: 0, inter: 0, indispo: 0 };
+    membres.forEach(a => { c[a.statut] = (c[a.statut] || 0) + 1; });
+    let html = `<div class="appel-head">
+      <span class="flabel">Équipe affichée</span>
+      <div class="seg team" role="group" aria-label="Équipe affichée">${EQUIPES.map(e => `<button data-act="equipe-vue" data-v="${e}" aria-pressed="${e === T}" aria-label="Équipe ${e}${e === auto ? ', de garde' : ''}">${e}${e === auto ? '<small>de garde</small>' : ''}</button>`).join('')}</div>
+      <p class="hint" style="margin:0">Garde de l'équipe ${T} ${per.quand} : ${esc(per.texte)}</p>
+    </div>
+    <div class="seg" role="tablist" aria-label="Agents">
+      <button role="tab" data-act="appel-tab" data-v="equipe" aria-selected="${S.appelTab !== 'autres'}">Équipe ${T} · ${membres.length}</button>
+      <button role="tab" data-act="appel-tab" data-v="autres" aria-selected="${S.appelTab === 'autres'}">Autres équipes · ${autres.length}</button>
+    </div>`;
+    if (S.appelTab === 'autres') {
+      html += `<p class="muted small" style="margin:0">Passe un agent en astreinte ou disponible pour l'ajouter en renfort : il apparaît alors dans l'onglet Équipe ${T}.</p>`;
+      if (sansEquipe.length) html += `<div class="group-title">Sans équipe · ${sansEquipe.length}</div><p class="hint" style="margin:0">Touche la lettre de son équipe pour le classer.</p><ul class="list">${sansEquipe.map(a => agentRow(a, false, { assign: true })).join('')}</ul>`;
+      EQUIPES.filter(e => e !== T).forEach(e => {
+        const l = autres.filter(a => a.equipe === e).sort(byFamille);
+        if (l.length) html += `<div class="group-title">Équipe ${e} · ${l.length}</div><ul class="list">${l.map(a => agentRow(a, false)).join('')}</ul>`;
+      });
+      return html;
+    }
+    if (sansEquipe.length) html += `<div class="note warn"><div class="row between"><span><b>${sansEquipe.length} agent${sansEquipe.length > 1 ? 's' : ''} sans équipe.</b> Classe-les une fois pour qu'ils apparaissent dans leur équipe.</span><button class="btn ghost" data-act="appel-tab" data-v="autres">Les classer</button></div></div>`;
+    if (!membres.length) {
+      html += `<div class="card empty"><p class="muted">Aucun agent n'est encore dans l'équipe ${T}. Ajoute un agent ou classe les agents existants.</p></div>`;
+    } else {
+      html += `<div class="row between"><div class="counts"><span><b>${c.astreinte}</b> astreinte</span><span><b>${c.dispo}</b> disponible${c.dispo > 1 ? 's' : ''}</span><span><b>${c.inter}</b> en inter</span><span><b>${c.indispo}</b> absent${c.indispo > 1 ? 's' : ''}</span></div>
+        ${confirmBtn('equipe-astreinte:' + T, `Toute l'équipe ${T} d'astreinte`, 'Confirmer', 'btn ghost')}</div>
+        <ul class="list">${membres.map(a => agentRow(a, false)).join('')}</ul>`;
+    }
+    html += `<div class="group-title">Renforts d'autres équipes · ${renforts.length}</div>`;
+    html += renforts.length ? `<ul class="list">${renforts.map(a => agentRow(a, false)).join('')}</ul>`
+      : `<p class="hint" style="margin:0">Aucun renfort. Pour en ajouter, ouvre « Autres équipes » et passe l'agent en astreinte ou disponible.</p>`;
     return html;
   }
 
@@ -911,25 +993,26 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     </div>`;
   }
 
-  function agentRow(a, rank) {
+  function agentRow(a, rank, opts = {}) {
     const open = S.open.has(a.id), quick = S.quick === a.id;
-    const restr = [ciTxt(a), a.equipierSeul ? 'équipier uniquement' : '', a.vsavSeul ? 'VSAV uniquement' : '', a.gradeEq ? `compté ${a.gradeEq}` : ''].filter(Boolean).join(' · ');
+    const restr = [a.equipe && rank !== false ? 'éq. ' + a.equipe : '', ciTxt(a), a.equipierSeul ? 'équipier uniquement' : '', a.vsavSeul ? 'VSAV uniquement' : '', a.gradeEq ? `compté ${a.gradeEq}` : ''].filter(Boolean).join(' · ');
     const ro = S.readOnly ? 'disabled' : '';
     const ctl = a.statut === 'inter'
       ? `<span class="pill astr">En inter depuis ${esc(fmtDate(a.dernierDepart))}</span><button class="btn ghost" data-act="retour" data-id="${esc(a.id)}" ${ro}>Retour</button>`
       : `<div class="seg small" role="group" aria-label="Statut de ${esc(a.nom)}">
-          ${[['astreinte', 'Astreinte'], ['dispo', 'Disponible'], ['indispo', 'Indispo']].map(([v, l]) => `<button data-act="statut" data-id="${esc(a.id)}" data-v="${v}" aria-pressed="${a.statut === v}" ${ro}>${l}</button>`).join('')}
+          ${[['astreinte', 'Astreinte'], ['dispo', 'Disponible'], ['indispo', rank === false ? 'Absent' : 'Indispo']].map(([v, l]) => `<button data-act="statut" data-id="${esc(a.id)}" data-v="${v}" aria-pressed="${a.statut === v}" ${ro}>${l}</button>`).join('')}
         </div>`;
+    const assign = opts.assign ? `<div class="chips assign" role="group" aria-label="Équipe de ${esc(a.nom)}">${EQUIPES.map(e => `<button type="button" class="chip sm" data-act="set-equipe" data-id="${esc(a.id)}" data-v="${e}" aria-pressed="${a.equipe === e}" ${ro}>${e}</button>`).join('')}</div>` : '';
     return `<li class="card">
-      <div class="agent-main">
-        <span class="rank">${rank ? pad(rank) : '·'}</span>
+      <div class="agent-main${rank === false ? ' no-rank' : ''}">
+        ${rank === false ? '' : `<span class="rank">${rank ? pad(rank) : '·'}</span>`}
         <button class="agent-name" data-act="quick" data-id="${esc(a.id)}" aria-expanded="${quick}" aria-label="Changer le dernier départ de ${esc(a.nom)}">
-          <b>${esc(a.nom)}</b>
+          <b>${rank === false ? nomHtml(a) : esc(a.nom)}</b>
           <span>${esc(a.grade && a.grade !== '?' ? a.grade : 'grade ?')} · ${esc(codTxt(a))}${restr ? ' · ' + esc(restr) : ''}</span>
           <span class="${a.dernierDepart ? '' : 'warn'}">Dernier départ : ${esc(fmtSec(a.dernierDepart))}${retourValide(a) ? ' · retour ' + esc(fmtSec(a.retour)) : ''}</span>
         </button>
         <button class="fiche-btn" data-act="toggle" data-id="${esc(a.id)}" aria-expanded="${open}">Fiche</button>
-        <div class="agent-ctl">${ctl}</div>
+        <div class="agent-ctl">${assign}${ctl}</div>
       </div>
       ${quick ? quickEditor(a) : ''}
       ${open ? `<div class="editor">${agentFields(a, 'agent')}
@@ -956,6 +1039,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     return `
       <label class="f">Nom et prénom<input id="${p}-nom" data-k="${k}" data-id="${esc(id)}" data-f="nom" value="${esc(a.nom)}" placeholder="Ex. Camille Durand" autocomplete="off" ${ro}></label>
       <div class="fgroup"><span class="flabel">Grade</span>${chips(k, id, 'grade', 'one', GRADE_OPTS, v => (a.grade || '?') === v)}</div>
+      <div class="fgroup"><span class="flabel">Équipe</span>${chips(k, id, 'equipe', 'one', [...EQUIPES.map(e => [e, 'Équipe ' + e]), ['', 'Aucune']], v => (a.equipe || '') === v)}</div>
       <div class="fgroup"><span class="flabel">Spécialités de conduite</span>${chips(k, id, 'cod', 'many', COD_OPTS, v => cod.includes(v))}
         <span class="hint">Sans COD, l'agent n'est jamais proposé comme conducteur.</span></div>
       <div class="fgroup"><span class="flabel">Contre-indications</span>${chips(k, id, 'ci', 'many', MISSIONS, v => ci.includes(v), 'ci')}
@@ -1063,7 +1147,9 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
       T.err = "Texte non reconnu : colle exactement le texte obtenu avec « Copier les données », sans rien couper."; S.transfer = T; return;
     }
     const oldA = S.agents.map(a => a.id), oldE = S.engins.map(e => e.id);
-    S.agents = d.agents.filter(a => a && a.id); S.engins = d.engins.filter(e => e && e.id).sort(byOrdre); S.journal = d.journal || [];
+    const avant = new Map(S.agents.map(a => [a.id, a]));
+    S.agents = d.agents.filter(a => a && a.id).map(a => (a.equipe === undefined && avant.get(a.id) && avant.get(a.id).equipe) ? { ...a, equipe: avant.get(a.id).equipe } : a);
+    S.engins = d.engins.filter(e => e && e.id).sort(byOrdre); S.journal = d.journal || [];
     if (S.store === 'db') {
       const newA = new Set(S.agents.map(a => a.id)), newE = new Set(S.engins.map(e => e.id));
       S.agents.forEach(putAgent); S.engins.forEach(putEngin); putJournal();
@@ -1172,6 +1258,11 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     else if (kind === 'del-agent') { S.agents = S.agents.filter(a => a.id !== arg); S.open.delete(arg); delAgent(arg); toast('Agent supprimé.'); }
     else if (kind === 'del-engin') { S.engins = S.engins.filter(e => e.id !== arg); S.sel.delete(arg); S.open.delete(arg); delEngin(arg); toast('Engin supprimé.'); }
     else if (kind === 'import') importData();
+    else if (kind === 'equipe-astreinte') {
+      let n = 0;
+      S.agents.forEach(a => { if (a.equipe === arg && a.statut !== 'inter' && a.statut !== 'astreinte') { a.statut = 'astreinte'; putAgent(a); n++; } });
+      toast(`Équipe ${arg} : ${n} agent${n > 1 ? 's' : ''} passé${n > 1 ? 's' : ''} d'astreinte.`);
+    }
     else if (kind === 'tous-indispo') {
       S.agents.forEach(a => { if (a.statut !== 'indispo') { a.statut = 'indispo'; delete a.statutAvant; putAgent(a); } });
       toast('Tout l\'effectif est passé indisponible.');
@@ -1330,6 +1421,10 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
         S.bulk.val = fmtSec(now ? new Date().toISOString() : b.dataset.v); S.bulk.rval = ret ? fmtSec(ret) : ''; S.bulk.err = '';
       } break;
       case 'bulk-save': bulkSave(); break;
+      case 'eff-view': S.effView = b.dataset.v; try { localStorage.setItem('armement-vue-effectif', S.effView); } catch (e) { /* préférence non gardée */ } break;
+      case 'equipe-vue': S.equipeVue = b.dataset.v; break;
+      case 'appel-tab': S.appelTab = b.dataset.v; window.scrollTo({ top: 0 }); break;
+      case 'set-equipe': { const a = findA(id); if (a) { a.equipe = a.equipe === b.dataset.v ? '' : b.dataset.v; putAgent(a); toast(a.equipe ? `${a.nom} → équipe ${a.equipe}` : `${a.nom} : équipe retirée`); } break; }
       case 'statut': { const a = findA(id); if (a && a.statut !== b.dataset.v) { a.statut = b.dataset.v; putAgent(a); } break; }
       case 'retour': { const a = findA(id); if (a) retour(a); break; }
       case 'retour-tous': S.agents.filter(a => a.statut === 'inter').forEach(retour); toast('Retour au centre enregistré.'); break;
