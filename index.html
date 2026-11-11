@@ -1,0 +1,1427 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Armement">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Armement des engins</title>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<script>
+window.ARMEMENT_OFFLINE = true; // version vierge : aucune donnée dans ce fichier
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+</script>
+</head>
+<body>
+<style>
+/* Layout : une colonne d'outil, en-tête collant avec onglets ; les équipages calculés
+   s'affichent comme des tickets de départ CTA (papier, chasse fixe). */
+:root {
+  --bg: #e9ecef;
+  --paper: #ffffff;
+  --ink: #15191e;
+  --muted: #5a636e;
+  --line: #cfd5dc;
+  --accent: #1f3a5f;      /* bleu de tenue */
+  --on-accent: #ffffff;
+  --accent-soft: #dde6f1;
+  --ok: #1e7148;
+  --ok-soft: #dcefe4;
+  --warn: #9a5a00;
+  --warn-soft: #fbecd2;
+  --crit: #b3261e;
+  --crit-soft: #f8dcd9;
+  --f-display: "Saira Condensed", "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1216; --paper: #161b21; --ink: #e5e9ee; --muted: #97a1ad; --line: #2b333d;
+    --accent: #9dbbe6; --on-accent: #0e1216; --accent-soft: #1d2a3b;
+    --ok: #63c793; --ok-soft: #14291e; --warn: #f0aa4c; --warn-soft: #2f2412;
+    --crit: #ff7a70; --crit-soft: #351a18;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1216; --paper: #161b21; --ink: #e5e9ee; --muted: #97a1ad; --line: #2b333d;
+  --accent: #9dbbe6; --on-accent: #0e1216; --accent-soft: #1d2a3b;
+  --ok: #63c793; --ok-soft: #14291e; --warn: #f0aa4c; --warn-soft: #2f2412;
+  --crit: #ff7a70; --crit-soft: #351a18;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.app { max-width: 760px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 56px; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 16px 12px; display: grid; gap: 12px; border-bottom: 1px solid var(--line); }
+.eyebrow { font: 500 11px/1.2 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 2px 0 0; font: 700 30px/1 var(--f-display); letter-spacing: .01em; text-transform: uppercase; text-wrap: balance; }
+h2 { margin: 0; font: 700 21px/1.1 var(--f-display); text-transform: uppercase; letter-spacing: .02em; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--paper); }
+.seg button { border: 0; background: transparent; padding: 9px 6px; font: 600 15px/1 var(--f-display); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); min-height: 40px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"], .seg button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
+.seg.small button { font: 500 12px/1 var(--f-body); text-transform: none; letter-spacing: 0; padding: 7px 8px; min-height: 34px; }
+
+main { display: grid; gap: 18px; padding-top: 18px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.between { justify-content: space-between; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.small { font-size: 13px; }
+
+.counts { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 500 13px/1.3 var(--f-mono); color: var(--muted); }
+.counts b { color: var(--ink); font-weight: 600; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 7px 14px; font: 600 15px/1 var(--f-display); letter-spacing: .04em; text-transform: uppercase; min-height: 36px; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+.btn { border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: 6px; padding: 9px 14px; font: 600 14px/1.1 var(--f-body); min-height: 40px; }
+.btn.ghost { background: transparent; color: var(--accent); }
+.btn.danger { background: transparent; color: var(--crit); border-color: var(--crit); }
+.btn.armed { background: var(--crit); border-color: var(--crit); color: #fff; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+.note { border: 1px solid var(--line); background: var(--paper); border-radius: 6px; padding: 12px 14px; display: grid; gap: 6px; }
+.note.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+.note.info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.note summary { cursor: pointer; font-weight: 600; }
+.note ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+
+.pill { display: inline-flex; align-items: center; gap: 4px; font: 600 10.5px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; padding: 4px 6px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.ok { color: var(--ok); background: var(--ok-soft); }
+.pill.warn { color: var(--warn); background: var(--warn-soft); }
+.pill.crit { color: var(--crit); background: var(--crit-soft); }
+.pill.astr { color: var(--accent); background: var(--accent-soft); }
+.pill.neutral { color: var(--muted); }
+
+/* Ticket de départ */
+.tickets { display: grid; gap: 14px; }
+.ticket { background: var(--paper); border: 1px solid var(--line); border-radius: 4px; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.ticket-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 12px 14px 10px; border-bottom: 1px dashed var(--line); }
+.ticket-head h3 { margin: 0; font: 700 24px/1 var(--f-display); letter-spacing: .03em; text-transform: uppercase; }
+.ticket-head .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ticket-note { margin: 0; padding: 8px 14px; font-size: 12px; line-height: 1.45; color: var(--warn); background: var(--warn-soft); border-bottom: 1px dashed var(--line); }
+.ticket-note.crit { color: var(--crit); background: var(--crit-soft); }
+.ticket-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px 12px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--muted); }
+.poste { border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.poste:last-of-type { border-bottom: 0; }
+.poste summary { list-style: none; display: grid; grid-template-columns: minmax(92px, 34%) 1fr auto; gap: 4px 10px; align-items: baseline; padding: 10px 14px; cursor: pointer; }
+.poste summary::-webkit-details-marker { display: none; }
+.poste .lbl { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); min-width: 0; }
+.poste .who { font: 600 14.5px/1.3 var(--f-mono); min-width: 0; overflow-wrap: anywhere; }
+.poste .who.empty { color: var(--crit); }
+.poste .who small { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+.poste .chev { color: var(--muted); transition: transform .15s; }
+.poste[open] .chev { transform: rotate(90deg); }
+.poste .flags { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.crew { border-top: 1px dashed var(--line); }
+.crew summary { list-style: none; display: flex; gap: 10px; align-items: baseline; padding: 10px 14px; cursor: pointer; font-size: 12.5px; }
+.crew summary::-webkit-details-marker { display: none; }
+.crew summary span:first-child { text-transform: uppercase; letter-spacing: .05em; font-size: 11.5px; color: var(--muted); }
+.crew summary .chev { margin-left: auto; color: var(--muted); transition: transform .15s; }
+.crew[open] .chev { transform: rotate(90deg); }
+.why { margin: 0 14px 12px; padding: 10px 12px; background: var(--bg); border-radius: 4px; font-size: 12.5px; line-height: 1.5; display: grid; gap: 6px; }
+.why ol { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.why .w-warn { color: var(--warn); }
+.why .w-crit { color: var(--crit); }
+
+/* Effectif */
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
+.agent-main { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 12px; align-items: center; padding: 10px 12px; }
+.rank { font: 600 13px/1 var(--f-mono); color: var(--muted); min-width: 2ch; text-align: right; }
+.agent-name { text-align: left; background: none; border: 0; padding: 0; min-width: 0; display: grid; gap: 2px; }
+.agent-name b { font-weight: 600; font-size: 15px; }
+.agent-name span { font: 400 12px/1.35 var(--f-mono); color: var(--muted); overflow-wrap: anywhere; }
+.agent-name span.warn { color: var(--warn); }
+.agent-ctl { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.agent-ctl .seg { flex: 1 1 220px; }
+.fiche-btn { align-self: start; border: 1px solid var(--line); background: transparent; color: var(--accent); border-radius: 5px; padding: 6px 10px; font: 600 12.5px/1 var(--f-body); min-height: 34px; }
+.fiche-btn[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.quick { border-top: 1px dashed var(--line); padding: 12px; display: grid; gap: 14px; background: color-mix(in srgb, var(--accent-soft) 50%, var(--paper)); border-radius: 0 0 6px 6px; }
+.quick-now { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: baseline; }
+.quick-now b { font: 600 15px/1.2 var(--f-mono); font-variant-numeric: tabular-nums; }
+.qrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.qd { flex: 1 1 190px; min-width: 0; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 6px; padding: 10px 12px; min-height: 50px; font: 600 21px/1.2 var(--f-mono); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.qgrid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; align-items: center; }
+.qlab { font-size: 13px; font-weight: 600; color: var(--ink); }
+.qlab span { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+.qd::placeholder { color: var(--muted); opacity: .6; font-weight: 400; }
+.chip.when { text-align: left; line-height: 1.2; }
+.bulk-group { display: grid; gap: 6px; }
+.filebtn { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+.sr-file { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.xfer { width: 100%; min-height: 110px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); padding: 8px 10px; font: 12px/1.4 var(--f-mono); resize: vertical; }
+.chip.when small { display: block; margin-top: 3px; font-size: 11px; opacity: .75; }
+.group-title { font: 600 12px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 6px 0 -2px; }
+
+.editor { border-top: 1px dashed var(--line); padding: 12px; display: grid; gap: 12px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 12px; }
+label.f { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+label.f input, label.f select, .role select, .role input { border: 1px solid var(--line); background: var(--bg); border-radius: 5px; padding: 8px 10px; min-height: 38px; color: var(--ink); font-size: 15px; width: 100%; min-width: 0; }
+fieldset { border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px 10px; margin: 0; }
+legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.checks label { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; min-height: 32px; }
+.checks input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Formulaires d'ajout */
+.chip.sm { font: 500 13px/1 var(--f-mono); text-transform: none; letter-spacing: 0; padding: 7px 11px; min-height: 34px; border-radius: 5px; }
+.chip.ci[aria-pressed="true"] { background: var(--crit-soft); border-color: var(--crit); color: var(--crit); }
+.chip:disabled { opacity: .55; cursor: not-allowed; }
+.fgroup { display: grid; gap: 6px; }
+.fgroup.deg { border-top: 1px dashed var(--line); padding-top: 12px; }
+.flabel { font-size: 12px; color: var(--muted); }
+.hint { font-size: 12px; color: var(--muted); }
+.err { margin: 0; color: var(--crit); font-weight: 600; font-size: 14px; }
+.card.draft { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.draft-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 12px 0; }
+.draft .editor { border-top: 0; }
+
+/* Engins */
+.engin-head { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 12px; }
+.engin-head button.agent-name b { font: 700 20px/1 var(--f-display); text-transform: uppercase; letter-spacing: .03em; }
+.roles { display: grid; gap: 8px; }
+.role { display: grid; grid-template-columns: 1.4fr 1fr 1fr auto; gap: 6px; align-items: center; }
+.opt-check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); min-height: 38px; }
+.opt-check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.role .x { border: 1px solid var(--line); background: transparent; border-radius: 5px; min-height: 38px; padding: 0 10px; color: var(--crit); }
+@media (max-width: 520px) {
+  .role { grid-template-columns: 1fr 1fr; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
+  .role input { grid-column: 1 / -1; }
+}
+.rules { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+
+.journal-entry { padding: 8px 0; border-top: 1px solid var(--line); font: 400 12.5px/1.45 var(--f-mono); }
+.empty { text-align: center; padding: 28px 16px; display: grid; gap: 10px; justify-items: center; }
+.empty p { margin: 0; max-width: 46ch; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 6px; font-size: 14px; max-width: calc(100% - 32px); z-index: 20; }
+footer { font-size: 12px; color: var(--muted); padding-top: 8px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div>
+      <div class="eyebrow">CIS Montivilliers · SDIS 76</div>
+      <h1>Armement des engins</h1>
+    </div>
+    <nav class="seg" role="tablist" aria-label="Sections">
+      <button role="tab" data-tab="depart" aria-selected="true">Départ</button>
+      <button role="tab" data-tab="effectif" aria-selected="false">Effectif</button>
+      <button role="tab" data-tab="engins" aria-selected="false">Engins</button>
+    </nav>
+  </header>
+  <div id="banner" class="note info" hidden style="margin-top:14px"></div>
+  <main id="view">
+    <div class="empty"><p class="muted">Chargement de l'effectif et des engins…</p></div>
+  </main>
+  <footer>Calcul indicatif selon les règles du centre. La décision d'engagement reste au chef de garde et au CTA.</footer>
+</div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script>
+// Moteur d'armement — CIS Montivilliers
+// Constitution de l'équipage à l'ancienneté de départ, placement au grade
+// (logique de la console) : voir le détail au-dessus de armer().
+
+const GRADES = ['SAP2', 'SAP1', 'CPL', 'CCH', 'SGT', 'SCH', 'ADJ', 'ADC', 'LTN', 'CPT', 'CDT'];
+const rank = g => GRADES.indexOf(g); // -1 si inconnu
+
+// Missions d'un engin : un agent contre-indiqué pour la mission n'y part pas
+const MISSIONS = [['INC', 'Incendie'], ['FDF', 'Feux de forêt'], ['SAP', 'Secours à personne'], ['DIV', 'Opérations diverses']];
+const MISSION_PAR_TYPE = { VSAV: 'SAP', FPT: 'INC', CCF: 'FDF', EPA: 'INC', VTU: 'DIV' };
+const missionOf = veh => veh.mission || MISSION_PAR_TYPE[veh.type] || 'DIV';
+const missionLabel = m => (MISSIONS.find(x => x[0] === m) || [m, m])[1];
+
+function gradeElig(a) { return a.gradeEq || a.grade || '?'; }
+
+// Tour de départ : astreinte, puis disponible
+const STATUT_RANG = { astreinte: 0, dispo: 1 };
+function isAvailable(a) { return a.statut in STATUT_RANG; }
+
+// Retourne null si éligible, sinon la raison (texte court)
+function ineligibility(a, role, veh) {
+  if (a.vsavSeul && veh.type !== 'VSAV') return 'VSAV uniquement';
+  const m = missionOf(veh);
+  if ((a.ci || []).includes(m)) return `contre-indication ${missionLabel(m).toLowerCase()}`;
+  const g = gradeElig(a);
+  if (role.type === 'CA') {
+    if (a.equipierSeul) return 'équipier uniquement';
+    if (a.grade === 'CCH') return 'CCH jamais chef d\'agrès';
+    if (rank(g) < 0) return 'grade inconnu';
+    if (rank(g) < rank(role.gradeMin)) return `grade ${g} < ${role.gradeMin}`;
+    return null;
+  }
+  if (role.type === 'COND') {
+    if (a.equipierSeul) return 'équipier uniquement';
+    if (!(a.cod || []).includes(role.cod)) return `pas de COD${role.cod}`;
+    return null;
+  }
+  // Équipier
+  if (role.gradeMin && rank(role.gradeMin) > 0) {
+    if (rank(g) < 0) return 'grade inconnu';
+    if (rank(g) < rank(role.gradeMin)) return `grade ${g} < ${role.gradeMin}`;
+  }
+  return null;
+}
+
+// Disponible depuis : l'heure de retour si elle est connue (et postérieure au
+// dernier départ), sinon l'heure du dernier départ. Le premier rentré repart le premier.
+function dispoDepuis(a) {
+  const d = a.dernierDepart ? Date.parse(a.dernierDepart) : -Infinity;
+  const r = a.retour ? Date.parse(a.retour) : NaN;
+  return r >= d ? r : d;
+}
+function priorityKey(a) {
+  return [STATUT_RANG[a.statut] ?? 3, dispoDepuis(a)];
+}
+
+function sortByPriority(agents) {
+  return [...agents].sort((x, y) => {
+    const [px, tx] = priorityKey(x), [py, ty] = priorityKey(y);
+    if (px !== py) return px - py;
+    if (tx !== ty) return tx < ty ? -1 : 1;
+    return x.nom.localeCompare(y.nom, 'fr');
+  });
+}
+
+function sameRank(x, y) {
+  const [px, tx] = priorityKey(x), [py, ty] = priorityKey(y);
+  return px === py && tx === ty;
+}
+
+// Couplage maximum postes ↔ agents (chemins augmentants)
+function maxMatching(slots, agents, eligFn) {
+  const matchAgent = new Map(); // agentId -> slotIndex
+  function tryAssign(si, seen) {
+    for (const a of agents) {
+      if (seen.has(a.id) || !eligFn(a, slots[si])) continue;
+      seen.add(a.id);
+      if (!matchAgent.has(a.id) || tryAssign(matchAgent.get(a.id), seen)) {
+        matchAgent.set(a.id, si);
+        return true;
+      }
+    }
+    return false;
+  }
+  let n = 0;
+  for (let i = 0; i < slots.length; i++) if (tryAssign(i, new Set())) n++;
+  return n;
+}
+
+// Logique de la console :
+// 1. Constitution : on prend les agents dans l'ordre (astreinte, puis disponible ;
+//    à statut égal le premier rentré, ou le plus ancien départ si le retour est inconnu). Un agent est sauté s'il ne peut
+//    tenir aucun des postes encore libres (il manque par exemple encore un ADJ+).
+// 2. Placement dans l'équipage : chef d'agrès d'abord (le plus gradé éligible),
+//    puis conducteur (le plus gradé restant avec le COD requis), chefs d'équipe,
+//    équipiers. Un agent n'est pas placé s'il est le seul de l'équipage à pouvoir
+//    tenir un poste suivant (seul COD requis → il conduit, le suivant est chef
+//    d'agrès). À grade égal : plus ancien départ.
+// 3. Départ dégradé : si la composition complète ne peut pas être armée et que
+//    l'engin a une composition dégradée (FPT à 4 avec un SGT chef d'agrès…),
+//    on arme la composition dégradée.
+// 4. Départ simultané : FPT armé en premier, les autres engins avec les suivants.
+
+const PLACEMENT_ORDER = r => r.type === 'CA' ? 0 : r.type === 'COND' ? 1 : (rank(r.gradeMin || 'SAP2') > 0 ? 2 : 3);
+
+function roleReq(r) { return r.type === 'COND' ? 'COD' + r.cod : (r.gradeMin && rank(r.gradeMin) > 0 ? r.gradeMin + '+' : 'tout grade'); }
+
+function premierManque(r) {
+  const p = r.postes.find(x => x.vide);
+  const f = (p && p.flags[0]) || 'non pourvu';
+  return p ? `${p.role.label} : ${(f.charAt(0).toLowerCase() + f.slice(1)).replace(/^aucun agent disponible ne peut tenir ce poste/, 'aucun agent disponible')}` : '';
+}
+
+function armer(vehiclesIn, agentsIn) {
+  const pool = sortByPriority(agentsIn.filter(isAvailable));
+  const vehicles = [...vehiclesIn].sort((a, b) => (a.type === 'FPT' ? 0 : 1) - (b.type === 'FPT' ? 0 : 1));
+  const usedBy = new Map(); // agentId -> nom de l'engin
+
+  const globalFlags = [];
+  const unknownGrades = pool.filter(a => rank(gradeElig(a)) < 0).map(a => a.nom);
+  if (unknownGrades.length) globalFlags.push(`Grade inconnu (écarté des postes à grade minimum) : ${unknownGrades.join(', ')}`);
+  const noDate = pool.filter(a => !a.dernierDepart).map(a => a.nom);
+  if (noDate.length) globalFlags.push(`Dernier départ non renseigné (considéré comme le plus ancien) : ${noDate.join(', ')}`);
+
+  const result = vehicles.map(veh => {
+    let r = armerEngin(veh, veh.roles || [], pool, usedBy);
+    const deg = Array.isArray(veh.degrade) && veh.degrade.length ? veh.degrade : null;
+    if (r.postes.some(p => p.vide) && deg) {
+      const d = armerEngin(veh, deg, pool, usedBy);
+      if (!d.postes.some(p => p.vide)) {
+        d.degrade = true;
+        d.pourquoiDegrade = `Composition complète (${veh.roles.length}) impossible : ${premierManque(r)}`;
+        r = d;
+      } else {
+        r.degradeImpossible = `Départ dégradé à ${deg.length} impossible aussi : ${premierManque(d)}`;
+      }
+    }
+    r.crew.forEach(a => usedBy.set(a.id, veh.nom));
+    return r;
+  });
+  return { result, globalFlags };
+}
+
+function armerEngin(veh, roles, pool, usedBy) {
+  const slots = roles.map((role, ri) => ({ role, ri }));
+  const elig = (a, s) => ineligibility(a, s.role, veh) === null;
+  const fullFit = (crew, sl) => maxMatching(sl, crew, elig) === crew.length;
+
+  // 1. Constitution : agents pris dans l'ordre du tour de départ
+  const crew = [], motifs = new Map();
+  for (const a of pool) {
+    if (crew.length === slots.length) break;
+    if (usedBy.has(a.id)) { motifs.set(a.id, `déjà engagé sur ${usedBy.get(a.id)}`); continue; }
+    if (!slots.some(s => elig(a, s))) { motifs.set(a.id, [...new Set(slots.map(s => ineligibility(a, s.role, veh)))].join(' ; ')); continue; }
+    if (fullFit([...crew, a], slots)) { crew.push(a); continue; }
+    const libres = slots.filter(s => fullFit(crew, slots.filter(x => x !== s)));
+    motifs.set(a.id, 'postes encore libres : ' + libres.map(s => `${s.role.label} (${ineligibility(a, s.role, veh) || 'déjà couvert'})`).join(', '));
+  }
+  const lastIdx = Math.max(-1, ...crew.map(a => pool.indexOf(a)));
+  const selection = pool.slice(0, lastIdx + 1).map(a => ({
+    nom: a.nom, statut: a.statut, dernierDepart: a.dernierDepart, retour: a.retour ?? null,
+    ok: crew.includes(a), motif: crew.includes(a) ? '' : (motifs.get(a.id) || ''),
+  }));
+
+  // 2. Placement par grade dans l'équipage
+  const seniority = a => rank(gradeElig(a));
+  const poolIdx = new Map(pool.map((a, i) => [a.id, i]));
+  const ties = new Map();
+  for (const c of crew) {
+    for (const b of pool) {
+      if (b === c || crew.includes(b) || usedBy.has(b.id) || !sameRank(b, c)) continue;
+      if (fullFit(crew.filter(x => x !== c).concat(b), slots)) { ties.set(c.id, b); break; }
+    }
+  }
+  const postes = roles.map(role => ({ role, agent: null, steps: [], flags: [], notes: [] }));
+  const ordered = [...slots].sort((x, y) => PLACEMENT_ORDER(x.role) - PLACEMENT_ORDER(y.role)
+    || rank(y.role.gradeMin || 'SAP2') - rank(x.role.gradeMin || 'SAP2') || x.ri - y.ri);
+  let free = [...crew];
+  const open = new Set(slots);
+  ordered.forEach((s, k) => {
+    open.delete(s);
+    const p = postes[s.ri];
+    p.ordre = k + 1;
+    const restSlots = [...open];
+    const bySeniority = (a, b) => seniority(b) - seniority(a) || poolIdx.get(a.id) - poolIdx.get(b.id);
+    const cands = free.filter(a => elig(a, s)).sort(bySeniority);
+    p.nCandidats = cands.length;
+    let chosen = null;
+    for (const a of cands) {
+      const rest = free.filter(x => x !== a);
+      if (fullFit(rest, restSlots)) { chosen = a; break; }
+      const lost = restSlots.find(x => elig(a, x) && !rest.some(o => elig(o, x)));
+      p.steps.push({ nom: a.nom, motif: lost ? `gardé pour « ${lost.role.label} » : seul de l'équipage à pouvoir le tenir` : 'gardé pour un autre poste', reserve: true });
+    }
+    if (chosen) {
+      free.filter(a => a !== chosen && !elig(a, s) && seniority(a) > seniority(chosen))
+        .sort(bySeniority)
+        .forEach(a => p.steps.push({ nom: a.nom, motif: ineligibility(a, s.role, veh) }));
+      const sen = nom => seniority(crew.find(c => c.nom === nom));
+      p.steps.sort((x, y) => sen(y.nom) - sen(x.nom));
+      p.agent = chosen;
+      const g = gradeElig(chosen);
+      const premier = cands[0] === chosen;
+      if (s.role.type === 'COND') p.motif = `${g !== '?' ? g : 'grade ?'}, ${cands.length === 1 ? 'seul' : 'plus gradé'} ${p.ordre > 1 ? 'restant ' : ''}avec COD${s.role.cod}`;
+      else if (s.role.type === 'CA') p.motif = `${g !== '?' ? g : 'grade ?'}, ${cands.length === 1 ? "seul chef d'agrès possible" : (premier ? 'le plus gradé éligible' : 'plus gradé restant')} de l'équipage`;
+      else p.motif = `${g !== '?' ? g : 'grade ?'}, ${rank(s.role.gradeMin || 'SAP2') > 0 ? 'plus gradé restant (' + roleReq(s.role) + ')' : "membre de l'équipage"}`;
+      const idx = cands.indexOf(chosen);
+      const next = cands.slice(idx + 1).find(o => seniority(o) === seniority(chosen));
+      if (next && s.role.type !== 'EQ') p.notes.push(`Même grade que ${next.nom} : départagé par le plus ancien dernier départ`);
+      const tie = ties.get(chosen.id);
+      if (tie) p.flags.push(`Égalité avec ${tie.nom} (même statut, même heure) : l'un des deux part → arbitrage du chef de garde`);
+      if (!chosen.dernierDepart) p.flags.push('Dernier départ non renseigné');
+      free = free.filter(x => x !== chosen);
+    } else {
+      p.vide = true;
+      const capables = pool.filter(a => elig(a, s));
+      if (!capables.length) p.flags.push(`Aucun agent disponible ne peut tenir ce poste (${roleReq(s.role)})`);
+      else if (capables.every(a => usedBy.has(a.id))) p.flags.push('Les agents capables de tenir ce poste sont déjà engagés sur un autre engin');
+      else if (crew.length < slots.length && capables.every(a => usedBy.has(a.id) || crew.includes(a))) {
+        p.flags.push(`Pas assez d'agents disponibles : ${pool.filter(a => !usedBy.has(a.id)).length} pour ${slots.length} postes`);
+      }
+      else if (capables.every(a => usedBy.has(a.id) || crew.includes(a))) {
+        const ici = capables.filter(a => crew.includes(a)).map(a => a.nom);
+        p.flags.push(`${ici.join(', ')} ${ici.length > 1 ? 'sont les seuls capables et sont placés' : 'est le seul capable et est placé'} sur un poste prioritaire de l'engin`);
+      }
+      else p.flags.push(`Aucun membre de l'équipage ne peut tenir ce poste (${roleReq(s.role)})`);
+    }
+  });
+
+  return { veh, postes, crew, selection, degrade: false };
+}
+
+function fmt(iso) {
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}h${p(d.getMinutes())}`;
+}
+
+if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, missionOf, ineligibility, sortByPriority, dispoDepuis };
+
+</script>
+<script>
+(function () {
+  /*BUILD*/
+  const OFFLINE = typeof window.ARMEMENT_OFFLINE !== 'undefined', SEED = window.ARMEMENT_SEED || null;
+  const ENGIN_TYPES = [['VSAV', 'VSAV'], ['FPT', 'FPT'], ['CCF', 'CCF'], ['EPA', 'Échelle'], ['VTU', 'VTU / VTUBS'], ['AUTRE', 'Autre']];
+  const COD_LIST = [0, 1, 2, 3, 4, 5, 6];
+  const ROLE_TYPES = [['CA', "Chef d'agrès"], ['COND', 'Conducteur'], ['EQ', 'Équipier']];
+  const S = {
+    agents: [], engins: [], journal: [], tab: 'depart', mode: 'prevision',
+    sel: new Set(), open: new Set(), confirm: null, confirmTimer: null,
+    loaded: { agents: false, engins: false }, store: null, db: null, readOnly: false, dirty: false,
+    draftAgent: null, draftEngin: null, draftError: '', focusAfter: '',
+    quick: null, quickVal: '', quickRVal: '', quickError: '', quickShowR: false, transfer: null,
+    bulk: null, // { val, sel: Set, err, all }
+  };
+
+  const $view = document.getElementById('view');
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const byOrdre = (a, b) => (a.ordre ?? 0) - (b.ordre ?? 0) || String(a.nom).localeCompare(String(b.nom), 'fr');
+  const pad = n => String(n).padStart(2, '0');
+  function fmtDate(iso) { if (!iso) return 'non renseigné'; const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}h${pad(d.getMinutes())}`; }
+  // Format console : 09/11 01:30:16 (court) ou 09/11/2026 01:30:16 (long)
+  function fmtSec(iso, long) {
+    if (!iso) return 'non renseigné';
+    const d = new Date(iso);
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}${long ? '/' + d.getFullYear() : ''} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  // Saisie au clavier numérique : JJMMHHMM(SS), l'année est déduite
+  function quickDigits(v) {
+    let d = String(v || '').replace(/\D/g, '');
+    if (d.length >= 12 && /^\d{4}20\d{2}/.test(d)) d = d.slice(0, 4) + d.slice(8); // 09/11/2026 01:30:16 collé tel quel
+    return d.slice(0, 10);
+  }
+  function quickMask(d) {
+    let s = d.slice(0, 2);
+    if (d.length > 2) s += '/' + d.slice(2, 4);
+    if (d.length > 4) s += ' ' + d.slice(4, 6);
+    if (d.length > 6) s += ':' + d.slice(6, 8);
+    if (d.length > 8) s += ':' + d.slice(8, 10);
+    return s;
+  }
+  function quickParse(d) {
+    if (d.length !== 8 && d.length !== 10) return { err: "Date incomplète : tape le jour, le mois, l'heure et les minutes (8 chiffres), puis les secondes si tu les as." };
+    const [J, M, h, mi] = [0, 2, 4, 6].map(i => +d.slice(i, i + 2));
+    const s = d.length === 10 ? +d.slice(8, 10) : 0;
+    if (J < 1 || J > 31 || M < 1 || M > 12 || h > 23 || mi > 59 || s > 59) return { err: "Date ou heure impossible : vérifie le jour, le mois et l'heure." };
+    const now = new Date();
+    let dt = new Date(now.getFullYear(), M - 1, J, h, mi, s);
+    if (dt - now > 3600e3) dt = new Date(now.getFullYear() - 1, M - 1, J, h, mi, s); // date à venir : année précédente
+    if (dt.getMonth() !== M - 1 || dt.getDate() !== J) return { err: `Le ${pad(J)}/${pad(M)} n'existe pas : vérifie le jour et le mois.` };
+    return { iso: dt.toISOString() };
+  }
+  function retourValide(a) { return !!a.retour && (!a.dernierDepart || Date.parse(a.retour) >= Date.parse(a.dernierDepart)); }
+  function retourDuDepart(iso) { const x = S.agents.find(o => o.dernierDepart === iso && retourValide(o)); return x ? x.retour : null; }
+  function toLocalInput(iso) { if (!iso) return ''; const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+  function codTxt(a) { return (a.cod && a.cod.length) ? 'COD ' + [...a.cod].sort((x, y) => x - y).join(' ') : 'aucun COD'; }
+  function statutTxt(s) { return { astreinte: 'astreinte', dispo: 'disponible', inter: 'en inter', indispo: 'indispo' }[s] || s; }
+  function roleCond(r) { return r.type === 'COND' ? 'COD' + r.cod : (r.gradeMin && r.gradeMin !== 'SAP2' ? r.gradeMin + '+' : 'tout grade'); }
+
+  /* ---------- Stockage ---------- */
+  const LS_KEY = 'armement-cis-montivilliers-v1';
+  function lsLoad() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || null; } catch (e) { return null; } }
+  function lsSave() { try { localStorage.setItem(LS_KEY, JSON.stringify({ agents: S.agents, engins: S.engins, journal: S.journal })); } catch (e) { /* stockage indisponible */ } }
+  const queues = new Map();
+  function enqueue(key, fn) {
+    const p = (queues.get(key) || Promise.resolve()).then(fn).catch(onWriteError);
+    queues.set(key, p); return p;
+  }
+  function strip(o) { const c = { ...o }; delete c.id; Object.keys(c).forEach(k => c[k] === undefined && delete c[k]); return c; }
+  function putAgent(a) { if (S.store === 'db') return enqueue('a:' + a.id, () => S.db.collection('agents').doc(a.id).set(strip(a))); lsSave(); }
+  function delAgent(id) { if (S.store === 'db') return enqueue('a:' + id, () => S.db.collection('agents').doc(id).delete()); lsSave(); }
+  function putEngin(e) { if (S.store === 'db') return enqueue('e:' + e.id, () => S.db.collection('engins').doc(e.id).set(strip(e))); lsSave(); }
+  function delEngin(id) { if (S.store === 'db') return enqueue('e:' + id, () => S.db.collection('engins').doc(id).delete()); lsSave(); }
+  function putJournal() { if (S.store === 'db') return enqueue('journal', () => S.db.doc('meta/journal').set({ entries: S.journal })); lsSave(); }
+
+  function onWriteError(e) {
+    const code = e && e.code;
+    if (code === 'invalid_argument') { S.readOnly = true; showBanner("Tu peux consulter cette page mais pas la modifier : demande un accès Contributeur à son propriétaire."); render(); }
+    else if (code === 'quota_exceeded') showBanner("Enregistrement refusé : l'espace de stockage de la page est plein.");
+    else showBanner("Enregistrement impossible pour le moment. Vérifie ta connexion puis refais la modification.");
+  }
+  function onDbError() { showBanner("La synchronisation s'est interrompue. Recharge la page pour la relancer."); }
+
+  async function start() {
+    let db = null;
+    if (!OFFLINE) { try { db = (window.claude && window.claude.use) ? await window.claude.use('db') : null; } catch (e) { db = null; } }
+    if (db) {
+      S.store = 'db'; S.db = db;
+      try {
+        const user = await window.claude.use('user');
+        if (user) { const can = await user.can('data.write'); if (can === false) S.readOnly = true; }
+      } catch (e) { /* on laisse les écritures décider */ }
+      db.collection('agents').onSnapshot(snap => {
+        S.agents = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+        S.loaded.agents = true; scheduleRender();
+      }, onDbError);
+      db.collection('engins').onSnapshot(snap => {
+        S.engins = snap.docs.map(d => ({ ...d.data(), id: d.id })).sort(byOrdre);
+        S.loaded.engins = true; scheduleRender();
+      }, onDbError);
+      db.doc('meta/journal').onSnapshot(snap => {
+        S.journal = snap.exists ? (snap.data().entries || []) : [];
+        scheduleRender();
+      }, onDbError);
+    } else {
+      S.store = 'local';
+      const d = lsLoad() || SEED;
+      if (d) { S.agents = d.agents || []; S.engins = (d.engins || []).sort(byOrdre); S.journal = d.journal || []; }
+      if (d && d === SEED) lsSave();
+      S.loaded = { agents: true, engins: true };
+      showBanner(OFFLINE
+        ? "Version hors ligne : les données restent sur ce téléphone. Pour les échanger avec la version en ligne, utilise « Transférer les données » en bas de l'onglet Engins."
+        : "Stockage partagé indisponible ici : les modifications restent sur cet appareil.");
+      render();
+    }
+  }
+
+  function showBanner(t) { const b = document.getElementById('banner'); b.textContent = t; b.hidden = false; }
+  let toastTimer = null;
+  function toast(t) { const el = document.getElementById('toast'); el.textContent = t; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3500); }
+
+  function isEditing() { const a = document.activeElement; return a && $view.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName); }
+  // Le rendu attend la fin d'une saisie ou d'un appui, pour ne pas perdre un clic en cours.
+  let pointerDown = false;
+  function flush() { if (S.dirty && !isEditing() && !pointerDown) { S.dirty = false; render(); } }
+  function scheduleRender() { if (isEditing() || pointerDown) { S.dirty = true; return; } render(); }
+  document.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+  const release = () => setTimeout(() => { pointerDown = false; flush(); }, 0);
+  document.addEventListener('pointerup', release, true);
+  document.addEventListener('pointercancel', release, true);
+  document.addEventListener('focusout', () => setTimeout(flush, 0));
+
+  /* ---------- Rendu ---------- */
+  function render() {
+    S.dirty = false;
+    document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
+    if (!S.loaded.agents || !S.loaded.engins) { $view.innerHTML = `<div class="empty"><p class="muted">Chargement de l'effectif et des engins…</p></div>`; return; }
+    const activeId = document.activeElement && $view.contains(document.activeElement) ? document.activeElement.id : '';
+    $view.innerHTML = S.tab === 'depart' ? viewDepart() : S.tab === 'effectif' ? viewEffectif() : viewEngins();
+    const focusId = S.focusAfter || activeId; S.focusAfter = '';
+    if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus({ preventScroll: !S.focusAfterScroll }); if (el.readOnly && el.select) el.select(); } }
+  }
+
+  function counts() {
+    const c = { astreinte: 0, dispo: 0, inter: 0, indispo: 0 };
+    S.agents.forEach(a => { c[a.statut] = (c[a.statut] || 0) + 1; });
+    return `<div class="counts"><span><b>${c.astreinte}</b> astreinte</span><span><b>${c.dispo}</b> disponible${c.dispo > 1 ? 's' : ''}</span><span><b>${c.inter}</b> en inter</span><span><b>${c.indispo}</b> indispo</span></div>`;
+  }
+
+  function confirmBtn(key, label, confirmLabel, cls = 'btn') {
+    const armed = S.confirm === key;
+    return `<button class="${cls}${armed ? ' armed' : ''}" data-act="confirm" data-key="${esc(key)}" ${S.readOnly ? 'disabled' : ''}>${esc(armed ? confirmLabel : label)}</button>`;
+  }
+
+  function viewDepart() {
+    if (!S.agents.length || !S.engins.length) {
+      return `<div class="card empty">
+        <h2>Rien à calculer pour l'instant</h2>
+        <p class="muted">${!S.agents.length ? "Aucun agent n'est enregistré." : ''} ${!S.engins.length ? "Aucun engin n'est paramétré." : ''} Renseigne l'effectif et les engins du centre pour obtenir les équipages.</p>
+        <div class="row">${OFFLINE && !S.agents.length && !S.engins.length ? fileImportBtn('Importer mon fichier de données', 'btn') : ''}${!S.agents.length ? `<button class="btn ${OFFLINE ? 'ghost' : ''}" data-act="tab" data-v="effectif">Ajouter l'effectif</button>` : ''}${!S.engins.length ? `<button class="btn ghost" data-act="tab" data-v="engins">Paramétrer les engins</button>` : ''}</div>
+      </div>`;
+    }
+    const { globalFlags } = armer([], S.agents);
+    const inter = S.agents.filter(a => a.statut === 'inter');
+    let html = counts();
+    html += `<div class="seg" role="group" aria-label="Mode de calcul">
+      <button data-act="mode" data-v="prevision" aria-pressed="${S.mode === 'prevision'}">Prochain départ par engin</button>
+      <button data-act="mode" data-v="simultane" aria-pressed="${S.mode === 'simultane'}">Départ simultané</button>
+    </div>`;
+    html += `<p class="muted small" style="margin:-8px 0 0">${S.mode === 'prevision'
+      ? "Chaque engin est calculé seul : un même agent peut apparaître sur plusieurs engins."
+      : "Les engins choisis partent ensemble : FPT armé en premier avec les plus anciens, les autres engins avec les suivants."}</p>`;
+    const dernier = S.journal[0];
+    if (dernier && dernier.avant) {
+      html += `<div class="note"><div class="row between"><span><b>Dernier départ validé :</b> ${dernier.engins.map(en => esc(en.nom)).join(' + ')} à ${esc(fmtDate(dernier.date))} · ${dernier.avant.length} agent${dernier.avant.length > 1 ? 's' : ''}</span>${confirmBtn('annuler-depart', 'Annuler ce départ', "Confirmer l'annulation", 'btn ghost')}</div><span class="hint">Remet les dates de dernier départ et les statuts d'avant ce départ.</span></div>`;
+    }
+    if (inter.length) {
+      html += `<div class="note info"><div class="row between"><span><b>En intervention :</b> ${inter.map(a => esc(a.nom)).join(', ')}</span><button class="btn ghost" data-act="retour-tous" ${S.readOnly ? 'disabled' : ''}>Retour de tous</button></div></div>`;
+    }
+    if (globalFlags.length) {
+      html += `<details class="note warn"><summary>${globalFlags.length} point${globalFlags.length > 1 ? 's' : ''} à vérifier dans l'effectif</summary><ul>${globalFlags.map(f => `<li>${esc(f)}</li>`).join('')}</ul></details>`;
+    }
+    const stamp = fmtDate(new Date().toISOString());
+    if (S.mode === 'prevision') {
+      html += `<div class="tickets">${S.engins.map(e => {
+        const { result } = armer([e], S.agents);
+        return ticket(result[0], stamp, confirmBtn('valider:' + e.id, 'Valider ce départ', 'Confirmer le départ'));
+      }).join('')}</div>`;
+    } else {
+      html += `<div class="chips" role="group" aria-label="Engins qui partent">${S.engins.map(e => `<button class="chip" data-act="sel" data-id="${esc(e.id)}" aria-pressed="${S.sel.has(e.id)}">${esc(e.nom)}</button>`).join('')}</div>`;
+      const vehs = S.engins.filter(e => S.sel.has(e.id));
+      if (!vehs.length) {
+        html += `<div class="card empty"><p class="muted">Choisis les engins qui partent ensemble, par exemple FPT et VSAV.</p></div>`;
+      } else {
+        const { result } = armer(vehs, S.agents);
+        html += `<div class="tickets">${result.map(r => ticket(r, stamp, '')).join('')}</div>`;
+        html += `<div class="row">${confirmBtn('valider:' + vehs.map(v => v.id).join(','), 'Valider le départ simultané', 'Confirmer le départ')}</div>`;
+      }
+    }
+    if (S.journal.length) {
+      html += `<details class="note"><summary>Derniers départs validés</summary>${S.journal.slice(0, 8).map(j =>
+        `<div class="journal-entry"><b>${esc(fmtDate(j.date))}</b> · ${j.engins.map(en => `${esc(en.nom)} : ${en.equipage.map(p => esc(p.nom || '—')).join(', ')}`).join(' / ')}</div>`).join('')}</details>`;
+    }
+    return html;
+  }
+
+  function crewBlock(r) {
+    const sel = r.selection || [];
+    if (!sel.length) return '';
+    const deja = sel.filter(s => !s.ok && s.motif.startsWith('déjà engagé'));
+    const rest = sel.filter(s => !deja.includes(s));
+    const nOk = sel.filter(s => s.ok).length;
+    return `<details class="crew"><summary><span>Constitution de l'équipage</span><span class="muted">${nOk} retenu${nOk > 1 ? 's' : ''}${rest.length - nOk ? ` · ${rest.length - nOk} sauté${rest.length - nOk > 1 ? 's' : ''}` : ''}</span><span class="chev" aria-hidden="true">›</span></summary>
+      <div class="why">
+        <div>Agents pris dans l'ordre du tour de départ ; un agent est sauté s'il ne peut tenir aucun poste encore libre.</div>
+        ${deja.length ? `<div class="muted">${deja.length} agent${deja.length > 1 ? 's' : ''} prioritaire${deja.length > 1 ? 's' : ''} déjà engagé${deja.length > 1 ? 's' : ''} sur ${esc(deja[0].motif.replace('déjà engagé sur ', ''))}.</div>` : ''}
+        <ol>${rest.map(s => `<li class="${s.ok ? '' : 'w-warn'}"><b>${s.ok ? 'Retenu' : 'Sauté'}</b> · ${esc(s.nom)} · ${esc(statutTxt(s.statut))}, ${esc(fmtDate(s.dernierDepart))}${retourValide(s) ? ', retour ' + esc(fmtDate(s.retour)) : ''}${s.ok ? '' : ' : ' + esc(s.motif)}</li>`).join('')}</ol>
+      </div></details>`;
+  }
+
+  function ticket(r, stamp, actions) {
+    const vide = r.postes.some(p => p.vide);
+    const egal = r.postes.some(p => p.flags.some(f => f.startsWith('Égalité')));
+    const status = vide ? `<span class="pill crit">Incomplet</span>` : r.degrade ? `<span class="pill warn">Départ dégradé à ${r.postes.length}</span>` : egal ? `<span class="pill warn">À arbitrer</span>` : `<span class="pill ok">Complet</span>`;
+    const statusEgal = (vide || r.degrade) && egal ? `<span class="pill warn">À arbitrer</span>` : '';
+    const verif = r.veh.aVerifier ? `<span class="pill neutral" title="Composition par défaut, à confirmer dans l'onglet Engins">Composition à vérifier</span>` : '';
+    const postes = r.postes.map(p => {
+      const pills = [];
+      if (p.vide) pills.push(`<span class="pill crit">Non pourvu</span>`);
+      if (p.flags.some(f => f.startsWith('Égalité'))) pills.push(`<span class="pill warn">Égalité</span>`);
+      if (p.agent && !p.agent.dernierDepart) pills.push(`<span class="pill warn">Date inconnue</span>`);
+      if (p.agent && p.agent.statut === 'astreinte') pills.push(`<span class="pill astr">Astreinte</span>`);
+      const why = `<div class="why">
+        <div>Placé en ${p.ordre}<sup>${p.ordre === 1 ? 'er' : 'e'}</sup> sur ${r.postes.length} · ${p.nCandidats} membre${p.nCandidats > 1 ? 's' : ''} de l'équipage éligible${p.nCandidats > 1 ? 's' : ''} (${esc(roleCond(p.role))})</div>
+        ${p.agent ? `<div>Retenu : <b>${esc(p.agent.nom)}</b> · ${esc(p.motif)}</div>` : ''}
+        ${p.steps.length ? `<div>${p.agent ? 'Plus gradés non placés ici :' : 'Membres examinés :'}<ol>${p.steps.map(s => `<li class="${s.reserve ? 'w-warn' : ''}">${esc(s.nom)} : ${esc(s.motif)}</li>`).join('')}</ol></div>` : ''}
+        ${p.flags.map(f => `<div class="${p.vide ? 'w-crit' : 'w-warn'}">${esc(f)}</div>`).join('')}
+        ${(p.notes || []).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
+      </div>`;
+      return `<details class="poste"><summary>
+          <span class="lbl">${esc(p.role.label)}</span>
+          <span class="who ${p.agent ? '' : 'empty'}">${p.agent ? esc(p.agent.nom) : 'Non pourvu'}${p.agent ? `<small>${esc(p.agent.grade && p.agent.grade !== '?' ? p.agent.grade : 'grade ?')} · dernier départ ${esc(fmtDate(p.agent.dernierDepart))}${retourValide(p.agent) ? ', retour ' + esc(fmtDate(p.agent.retour)) : ''}</small>` : ''}</span>
+          <span class="chev" aria-hidden="true">›</span>
+          ${pills.length ? `<span class="flags">${pills.join('')}</span>` : ''}
+        </summary>${why}</details>`;
+    }).join('');
+    return `<article class="ticket">
+      <div class="ticket-head"><h3>${esc(r.veh.nom)}</h3><div class="meta">${verif}${statusEgal}${status}</div></div>
+      ${r.degrade ? `<p class="ticket-note">${esc(r.pourquoiDegrade)}.</p>` : ''}
+      ${r.degradeImpossible ? `<p class="ticket-note crit">${esc(r.degradeImpossible)}.</p>` : ''}
+      ${postes || '<p class="muted" style="padding:12px 14px;margin:0">Aucun poste paramétré pour cet engin.</p>'}
+      ${crewBlock(r)}
+      <div class="ticket-foot"><span>Calcul ${esc(stamp)} · ${r.postes.filter(p => p.agent).length}/${r.postes.length} postes</span>${actions}</div>
+    </article>`;
+  }
+
+  function priorityList() {
+    const avail = sortByPriority(S.agents.filter(isAvailable));
+    const inter = S.agents.filter(a => a.statut === 'inter').sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    const indispo = S.agents.filter(a => !isAvailable(a) && a.statut !== 'inter').sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    return { avail, inter, indispo };
+  }
+
+  /* ---------- Modèles d'engins ---------- */
+  const R = {
+    ca: g => ({ label: "Chef d'agrès", type: 'CA', gradeMin: g }),
+    cond: c => ({ label: 'Conducteur', type: 'COND', cod: c }),
+    eq: (l, g = 'SAP2') => ({ label: l, type: 'EQ', gradeMin: g }),
+  };
+  const MODELS = {
+    VSAV: { nom: 'VSAV', mission: 'SAP', roles: [R.ca('SGT'), R.cond(0), R.eq('Équipier')] },
+    FPT: { nom: 'FPT', mission: 'INC', roles: [R.ca('ADJ'), R.cond(1), R.eq('Chef BAT', 'CPL'), R.eq('Chef BAL', 'CPL'), R.eq('Équipier BAT'), R.eq('Équipier BAL')],
+      degrade: [R.ca('SGT'), R.cond(1), R.eq("Chef d'équipe", 'CPL'), R.eq('Équipier')] },
+    CCF: { nom: 'CCF', mission: 'FDF', roles: [R.ca('SGT'), R.cond(2), R.eq('Équipier 1'), R.eq('Équipier 2')] },
+    EPA: { nom: 'Échelle', mission: 'INC', roles: [R.ca('SGT'), R.cond(6), R.eq('Équipier')], degrade: [R.ca('SGT'), R.cond(6)] },
+    VTU: { nom: 'VTU', mission: 'DIV', roles: [R.ca('SGT'), R.cond(1), R.eq('Équipier')], degrade: [R.ca('SGT'), R.cond(1)] },
+    AUTRE: { nom: 'Engin', mission: 'DIV', roles: [R.ca('SGT'), R.cond(0)] },
+  };
+  function uniqueNom(base) {
+    const noms = new Set(S.engins.map(e => e.nom.toLowerCase()));
+    if (!noms.has(base.toLowerCase())) return base;
+    let n = 2; while (noms.has(`${base} ${n}`.toLowerCase())) n++;
+    return `${base} ${n}`;
+  }
+  function draftFromModel(type) {
+    const m = MODELS[type] || MODELS.AUTRE;
+    return { type, nom: uniqueNom(m.nom), mission: m.mission, roles: JSON.parse(JSON.stringify(m.roles)), degrade: m.degrade ? JSON.parse(JSON.stringify(m.degrade)) : null, nomAuto: true };
+  }
+  function newDraftAgent(statut = 'dispo') {
+    return { nom: '', grade: '?', gradeEq: '', cod: [], ci: [], equipierSeul: false, vsavSeul: false, statut, dernierDepart: null };
+  }
+
+  /* ---------- Sélecteurs à pastilles ---------- */
+  // mode : one (un seul choix), many (plusieurs), bool (interrupteur)
+  function chips(k, id, f, mode, options, isOn, extraCls = '') {
+    const ro = S.readOnly && (k === 'agent' || k === 'engin') ? 'disabled' : '';
+    return `<div class="chips" role="group">${options.map(([v, l]) => `<button type="button" class="chip sm ${extraCls}" data-act="pick" data-k="${k}" data-id="${esc(id || '')}" data-f="${f}" data-mode="${mode}" data-v="${esc(v)}" aria-pressed="${isOn(v)}" ${ro}>${esc(l)}</button>`).join('')}</div>`;
+  }
+  const GRADE_OPTS = [['?', 'Inconnu'], ...GRADES.map(g => [g, g])];
+  const COD_OPTS = COD_LIST.map(c => [String(c), 'COD' + c]);
+  const RESTR_OPTS = [['equipierSeul', 'Équipier uniquement'], ['vsavSeul', 'VSAV uniquement']];
+
+  /* ---------- Effectif ---------- */
+  function bulkCard() {
+    const B = S.bulk, n = B.sel.size;
+    const byNom = (a, b) => a.nom.localeCompare(b.nom, 'fr');
+    const groups = [
+      ['Astreinte', S.agents.filter(a => a.statut === 'astreinte')],
+      ['Disponible', S.agents.filter(a => a.statut === 'dispo')],
+      ['En intervention', S.agents.filter(a => a.statut === 'inter')],
+    ];
+    const autres = S.agents.filter(a => !['astreinte', 'dispo', 'inter'].includes(a.statut));
+    if (B.all) groups.push(['Indisponibles', autres]);
+    const chip = a => `<button type="button" class="chip sm when" data-act="bulk-toggle" data-id="${esc(a.id)}" aria-pressed="${B.sel.has(a.id)}">${esc(a.nom)}<small>${esc(a.dernierDepart ? fmtSec(a.dernierDepart) : 'pas de date')}${retourValide(a) ? ' · retour ' + esc(fmtSec(a.retour).slice(6)) : ''}</small></button>`;
+    const recents = [...new Set(S.agents.map(a => a.dernierDepart).filter(Boolean))].sort((x, y) => Date.parse(y) - Date.parse(x)).slice(0, 3);
+    return `<section class="card draft" aria-label="Saisir un départ">
+      <div class="draft-head"><h2>Saisir un départ</h2><button class="linkbtn" data-act="bulk-close">Fermer</button></div>
+      <div class="editor">
+        <p class="hint" style="margin:0">Dans NexSIS, les agents partis ensemble ont la même heure. Tape cette heure une fois, coche les agents, enregistre, puis passe à l'heure suivante.</p>
+        <div class="fgroup">
+          <label class="flabel" for="bulk-dd">1. Heure du départ</label>
+          ${B.showR || B.rval ? `<div class="qgrid">
+            <label class="qlab" for="bulk-dd">Départ</label>
+            <input id="bulk-dd" class="qd" type="text" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="JJ/MM HH:MM:SS" value="${esc(B.val)}" data-k="bulk">
+            <label class="qlab" for="bulk-rt">Retour<span>facultatif</span></label>
+            <input id="bulk-rt" class="qd" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="off" placeholder="JJ/MM HH:MM" value="${esc(B.rval || '')}" data-k="bulkr">
+          </div>
+          <span class="hint">Retour : pour classer l'engin rentré en premier quand plusieurs engins sont partis sur la même intervention. Une heure approximative suffit.</span>`
+          : `<input id="bulk-dd" class="qd" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="off" placeholder="JJ/MM HH:MM:SS" value="${esc(B.val)}" data-k="bulk">
+          <div><button type="button" class="linkbtn" data-act="bulk-showr">Départ à plusieurs engins ? Ajouter l'heure de retour</button></div>`}
+          <div class="chips">${recents.map(iso => `<button type="button" class="chip sm" data-act="bulk-when" data-v="${esc(iso)}">${esc(fmtSec(iso))}</button>`).join('')}
+            <button type="button" class="chip sm" data-act="bulk-when" data-v="now">Maintenant</button></div>
+        </div>
+        <div class="fgroup">
+          <span class="flabel">2. Agents partis · ${n} coché${n > 1 ? 's' : ''}</span>
+          ${groups.filter(([, l]) => l.length).map(([titre, l]) => `<div class="bulk-group"><span class="hint">${titre}</span><div class="chips">${l.sort(byNom).map(chip).join('')}</div></div>`).join('')}
+          ${autres.length ? `<div><button type="button" class="linkbtn" data-act="bulk-all">${B.all ? 'Masquer les indisponibles' : `Afficher les indisponibles (${autres.length})`}</button></div>` : ''}
+        </div>
+        ${B.err ? `<p class="err" role="alert">${esc(B.err)}</p>` : ''}
+        <div class="row">
+          <button type="button" class="btn" data-act="bulk-save" ${n ? '' : 'disabled'}>3. Enregistrer pour ${n || 'les'} agent${n > 1 ? 's' : ''}</button>
+          ${n ? `<button type="button" class="linkbtn" data-act="bulk-clear">Tout décocher</button>` : ''}
+        </div>
+      </div>
+    </section>`;
+  }
+
+  function bulkSave() {
+    const B = S.bulk; if (!B) return;
+    const inp = document.getElementById('bulk-dd'); if (inp) B.val = inp.value;
+    const inr = document.getElementById('bulk-rt'); if (inr) B.rval = inr.value;
+    const r = quickParse(quickDigits(B.val));
+    if (r.err) { B.err = r.err; S.focusAfter = 'bulk-dd'; return; }
+    let ret = null;
+    if (quickDigits(B.rval)) {
+      const rr = quickParse(quickDigits(B.rval));
+      if (rr.err) { B.err = 'Retour : ' + rr.err; S.focusAfter = 'bulk-rt'; return; }
+      if (Date.parse(rr.iso) < Date.parse(r.iso)) { B.err = 'Le retour est avant le départ : vérifie les deux heures.'; S.focusAfter = 'bulk-rt'; return; }
+      ret = rr.iso;
+    }
+    const agents = [...B.sel].map(findA).filter(Boolean);
+    if (!agents.length) { B.err = 'Coche au moins un agent.'; return; }
+    agents.forEach(a => {
+      a.dernierDepart = r.iso;
+      if (ret) a.retour = ret; else if (a.retour && Date.parse(a.retour) < Date.parse(r.iso)) delete a.retour;
+      putAgent(a);
+    });
+    toast(`Départ ${fmtSec(r.iso, true)}${ret ? ', retour ' + fmtSec(ret, true) : ''} enregistré pour ${agents.map(a => a.nom).join(', ')}.`);
+    S.bulk = { val: '', rval: '', sel: new Set(), err: '', all: B.all, showR: false };
+    S.focusAfter = 'bulk-dd';
+  }
+
+  function viewEffectif() {
+    const { avail, inter, indispo } = priorityList();
+    let html = `<div class="row between"><h2>Effectif</h2><div class="row">
+      ${confirmBtn('tous-indispo', 'Tout passer indispo', 'Confirmer : tous indispo', 'btn ghost')}
+      ${S.draftAgent ? '' : `<button class="btn ghost" data-act="new-agent" ${S.readOnly ? 'disabled' : ''}>Ajouter un agent</button>`}
+      ${S.bulk ? '' : `<button class="btn" data-act="bulk-open" ${S.readOnly ? 'disabled' : ''}>Saisir un départ</button>`}</div></div>`;
+    if (S.bulk) html += bulkCard();
+    if (S.draftAgent) html += agentDraftCard();
+    html += counts();
+    if (!S.agents.length) {
+      return html + (S.draftAgent ? '' : `<div class="card empty"><p class="muted">Aucun agent enregistré. Ajoute les agents du centre avec leur grade, leurs COD et leurs contre-indications.</p></div>`);
+    }
+    html += `<p class="muted small" style="margin:0">L'ordre ci-dessous est le tour de départ : astreinte, puis disponible ; à statut égal, le plus ancien départ (ou le premier rentré si l'heure de retour est renseignée). Touche un nom pour changer son dernier départ, « Fiche » pour le reste.</p>`;
+    if (avail.length) html += `<div class="group-title">Tour de départ</div><ul class="list">${avail.map((a, i) => agentRow(a, i + 1)).join('')}</ul>`;
+    if (inter.length) html += `<div class="group-title">En intervention</div><ul class="list">${inter.map(a => agentRow(a)).join('')}</ul>`;
+    if (indispo.length) html += `<div class="group-title">Indisponibles</div><ul class="list">${indispo.map(a => agentRow(a)).join('')}</ul>`;
+    return html;
+  }
+
+  function ciTxt(a) { return (a.ci || []).length ? 'CI ' + a.ci.map(m => missionLabel(m).toLowerCase()).join(', ') : ''; }
+
+  function recentDeparts(a) {
+    const m = new Map();
+    S.agents.forEach(x => { if (x.dernierDepart && x.id !== a.id) { if (!m.has(x.dernierDepart)) m.set(x.dernierDepart, []); m.get(x.dernierDepart).push(x.nom); } });
+    // [départ, noms, retour connu du groupe]
+    return [...m.entries()].sort((x, y) => Date.parse(y[0]) - Date.parse(x[0])).filter(([iso]) => iso !== a.dernierDepart).slice(0, 4)
+      .map(([iso, noms]) => [iso, noms, retourDuDepart(iso)]);
+  }
+
+  function quickEditor(a) {
+    const id = esc(a.id), ro = S.readOnly ? 'disabled' : '';
+    const showR = S.quickShowR || retourValide(a);
+    const recents = recentDeparts(a);
+    return `<div class="quick">
+      <div class="quick-now"><span class="flabel">Dernier départ</span><b>${esc(fmtSec(a.dernierDepart, true))}</b>
+        ${retourValide(a) ? `<span class="flabel">Retour</span><b>${esc(fmtSec(a.retour, true))}</b>` : ''}</div>
+      <div class="fgroup"><span class="flabel">Même départ que</span>
+        <div class="chips">${recents.map(([iso, noms, ret]) => `<button type="button" class="chip sm when" data-act="quick-pick" data-id="${id}" data-v="${esc(iso)}" data-r="${esc(ret || '')}" ${ro}>${esc(fmtSec(iso))}<small>${esc(noms[0])}${noms.length > 1 ? ' +' + (noms.length - 1) : ''}${ret ? ' · retour ' + esc(fmtSec(ret).slice(6)) : ''}</small></button>`).join('')}
+          <button type="button" class="chip sm when" data-act="quick-pick" data-id="${id}" data-v="now" ${ro}>Maintenant<small>départ en cours</small></button>
+        </div>
+      </div>
+      <div class="fgroup">
+        <label class="flabel" for="qd-${id}">Ou tape l'heure de départ de la console</label>
+        ${showR ? `<div class="qgrid">
+          <label class="qlab" for="qd-${id}">Départ</label>
+          <input id="qd-${id}" class="qd" type="text" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="JJ/MM HH:MM:SS" value="${esc(S.quickVal)}" data-k="quick" data-id="${id}" ${ro}>
+          <label class="qlab" for="qr-${id}">Retour<span>facultatif</span></label>
+          <input id="qr-${id}" class="qd" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="off" placeholder="JJ/MM HH:MM" value="${esc(S.quickRVal)}" data-k="quickr" data-id="${id}" ${ro}>
+        </div>
+        <div><button type="button" class="btn" data-act="quick-save" data-id="${id}" ${ro}>Enregistrer</button></div>
+        <span class="hint">Retour : seulement pour un départ à plusieurs engins, pour classer celui qui est rentré en premier. Une heure approximative suffit. Laisse un champ vide pour ne pas le changer.</span>`
+        : `<div class="qrow">
+          <input id="qd-${id}" class="qd" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="off" placeholder="JJ/MM HH:MM:SS" value="${esc(S.quickVal)}" data-k="quick" data-id="${id}" ${ro}>
+          <button type="button" class="btn" data-act="quick-save" data-id="${id}" ${ro}>Enregistrer</button>
+        </div>
+        <div><button type="button" class="linkbtn" data-act="quick-showr">Départ à plusieurs engins ? Ajouter l'heure de retour</button></div>`}
+        <span class="hint">Chiffres seulement : 0911013016 pour le 09/11 à 01:30:16. Les secondes sont facultatives.</span>
+        ${S.quickError ? `<p class="err" role="alert">${esc(S.quickError)}</p>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function agentRow(a, rank) {
+    const open = S.open.has(a.id), quick = S.quick === a.id;
+    const restr = [ciTxt(a), a.equipierSeul ? 'équipier uniquement' : '', a.vsavSeul ? 'VSAV uniquement' : '', a.gradeEq ? `compté ${a.gradeEq}` : ''].filter(Boolean).join(' · ');
+    const ro = S.readOnly ? 'disabled' : '';
+    const ctl = a.statut === 'inter'
+      ? `<span class="pill astr">En inter depuis ${esc(fmtDate(a.dernierDepart))}</span><button class="btn ghost" data-act="retour" data-id="${esc(a.id)}" ${ro}>Retour</button>`
+      : `<div class="seg small" role="group" aria-label="Statut de ${esc(a.nom)}">
+          ${[['astreinte', 'Astreinte'], ['dispo', 'Disponible'], ['indispo', 'Indispo']].map(([v, l]) => `<button data-act="statut" data-id="${esc(a.id)}" data-v="${v}" aria-pressed="${a.statut === v}" ${ro}>${l}</button>`).join('')}
+        </div>`;
+    return `<li class="card">
+      <div class="agent-main">
+        <span class="rank">${rank ? pad(rank) : '·'}</span>
+        <button class="agent-name" data-act="quick" data-id="${esc(a.id)}" aria-expanded="${quick}" aria-label="Changer le dernier départ de ${esc(a.nom)}">
+          <b>${esc(a.nom)}</b>
+          <span>${esc(a.grade && a.grade !== '?' ? a.grade : 'grade ?')} · ${esc(codTxt(a))}${restr ? ' · ' + esc(restr) : ''}</span>
+          <span class="${a.dernierDepart ? '' : 'warn'}">Dernier départ : ${esc(fmtSec(a.dernierDepart))}${retourValide(a) ? ' · retour ' + esc(fmtSec(a.retour)) : ''}</span>
+        </button>
+        <button class="fiche-btn" data-act="toggle" data-id="${esc(a.id)}" aria-expanded="${open}">Fiche</button>
+        <div class="agent-ctl">${ctl}</div>
+      </div>
+      ${quick ? quickEditor(a) : ''}
+      ${open ? `<div class="editor">${agentFields(a, 'agent')}
+        <div class="row between">
+          <button class="linkbtn" data-act="toggle" data-id="${esc(a.id)}">Fermer</button>
+          ${confirmBtn('del-agent:' + a.id, 'Supprimer cet agent', 'Confirmer la suppression', 'btn danger')}
+        </div></div>` : ''}
+    </li>`;
+  }
+
+  function gradeOptions(sel, withUnknown, emptyLabel) {
+    let o = '';
+    if (emptyLabel) o += `<option value="" ${!sel ? 'selected' : ''}>${esc(emptyLabel)}</option>`;
+    if (withUnknown) o += `<option value="?" ${sel === '?' ? 'selected' : ''}>Inconnu</option>`;
+    GRADES.forEach(g => { o += `<option value="${g}" ${sel === g ? 'selected' : ''}>${g}</option>`; });
+    return o;
+  }
+
+  // Champs communs à l'ajout rapide (draftAgent) et à la fiche (agent)
+  function agentFields(a, k) {
+    const id = k === 'agent' ? a.id : '', p = k === 'agent' ? `ag-${esc(a.id)}` : 'draft-agent';
+    const ro = S.readOnly && k === 'agent' ? 'disabled' : '';
+    const ci = a.ci || [], cod = (a.cod || []).map(String);
+    return `
+      <label class="f">Nom et prénom<input id="${p}-nom" data-k="${k}" data-id="${esc(id)}" data-f="nom" value="${esc(a.nom)}" placeholder="Ex. Camille Durand" autocomplete="off" ${ro}></label>
+      <div class="fgroup"><span class="flabel">Grade</span>${chips(k, id, 'grade', 'one', GRADE_OPTS, v => (a.grade || '?') === v)}</div>
+      <div class="fgroup"><span class="flabel">Spécialités de conduite</span>${chips(k, id, 'cod', 'many', COD_OPTS, v => cod.includes(v))}
+        <span class="hint">Sans COD, l'agent n'est jamais proposé comme conducteur.</span></div>
+      <div class="fgroup"><span class="flabel">Contre-indications</span>${chips(k, id, 'ci', 'many', MISSIONS, v => ci.includes(v), 'ci')}
+        <span class="hint">L'agent n'est jamais engagé sur un engin dont la mission est cochée ici.</span></div>
+      <div class="fgroup"><span class="flabel">Restrictions</span>${chips(k, id, 'restr', 'bool', RESTR_OPTS, v => !!a[v])}</div>
+      ${k === 'draftAgent' ? `<div class="fgroup"><span class="flabel">Statut</span>${chips(k, id, 'statut', 'one', [['astreinte', 'Astreinte'], ['dispo', 'Disponible'], ['indispo', 'Indispo']], v => a.statut === v)}</div>` : ''}
+      <div class="fields">
+        <label class="f">Compté comme (éligibilité)<select id="${p}-gradeEq" data-k="${k}" data-id="${esc(id)}" data-f="gradeEq" ${ro}>${gradeOptions(a.gradeEq || '', false, 'Son grade')}</select></label>
+        ${k === 'draftAgent' ? `<label class="f">Dernier départ (si connu)<input type="datetime-local" id="${p}-dd" data-k="${k}" data-id="${esc(id)}" data-f="dernierDepart" value="${esc(toLocalInput(a.dernierDepart))}"></label>` : ''}
+      </div>`;
+  }
+
+  function agentDraftCard() {
+    return `<section class="card draft" aria-label="Nouvel agent">
+      <div class="draft-head"><h2>Nouvel agent</h2><button class="linkbtn" data-act="cancel-agent">Fermer</button></div>
+      <div class="editor">${agentFields(S.draftAgent, 'draftAgent')}
+        ${S.draftError ? `<p class="err" role="alert">${esc(S.draftError)}</p>` : ''}
+        <div class="row"><button class="btn" data-act="save-agent">Enregistrer l'agent</button><span class="hint">Le formulaire reste ouvert pour saisir le suivant.</span></div>
+      </div>
+    </section>`;
+  }
+
+  /* ---------- Engins ---------- */
+  function viewEngins() {
+    let html = `<div class="row between"><h2>Engins du centre</h2>${S.draftEngin ? '' : `<button class="btn" data-act="new-engin" ${S.readOnly ? 'disabled' : ''}>Ajouter un engin</button>`}</div>`;
+    if (S.draftEngin) html += enginDraftCard();
+    if (!S.engins.length && !S.draftEngin) html += `<div class="card empty"><p class="muted">Aucun engin paramétré. Ajoute un engin à partir d'un modèle, puis ajuste ses postes.</p></div>`;
+    else if (S.engins.length) html += `<ul class="list">${S.engins.map(enginRow).join('')}</ul>`;
+    html += `<section class="note"><h2 style="font-size:18px">Règles appliquées</h2><ul class="rules">
+      <li>Tour de départ : astreinte (y compris DHCIS) avant disponible ; à statut égal, le plus ancien départ part en premier. Pour un départ à plusieurs engins, l'engin rentré en premier repart en premier : renseigne alors l'heure de retour, même approximative.</li>
+      <li>Constitution : l'engin prend les agents dans cet ordre ; un agent est sauté s'il ne peut tenir aucun des postes encore libres (par exemple s'il manque encore un ADJ pour chef d'agrès).</li>
+      <li>Placement : chef d'agrès d'abord, le plus gradé éligible de l'équipage ; puis conducteur, le plus gradé restant avec le COD requis ; puis chefs d'équipe et équipiers, toujours le plus gradé d'abord.</li>
+      <li>Un agent seul à pouvoir tenir un poste lui est réservé : si le plus gradé est le seul à avoir le COD requis, il conduit et le suivant est chef d'agrès.</li>
+      <li>À grade égal, le plus ancien dernier départ passe devant.</li>
+      <li>Même statut et même dernier départ entre un agent retenu et un agent laissé : égalité à arbitrer par le chef de garde.</li>
+      <li>Départ dégradé : si la composition complète ne peut pas être armée, l'engin part avec sa composition dégradée (par exemple FPT à 4 avec un SGT chef d'agrès).</li>
+      <li>Départ simultané : le FPT est armé en premier, les autres engins avec les agents suivants.</li>
+      <li>Un agent n'est jamais engagé sur un engin dont la mission lui est contre-indiquée.</li>
+      <li>Un CCH n'est jamais chef d'agrès. Le grade « compté comme » remplace le grade pour l'éligibilité et l'ordre de grade.</li>
+      <li>Grade inconnu : écarté des postes qui exigent un grade minimum.</li>
+    </ul></section>`;
+    html += transferSection();
+    return html;
+  }
+
+  /* ---------- Transfert entre la version en ligne et la version hors ligne ---------- */
+  function exportText() {
+    return JSON.stringify({ app: 'armement-cis-montivilliers', v: 1, exporte: new Date().toISOString(), agents: S.agents, engins: S.engins, journal: S.journal });
+  }
+  function transferSection() {
+    const T = S.transfer || {};
+    return `<section class="note" id="transfert"><h2 style="font-size:18px">Transférer les données</h2>
+      <p class="hint" style="margin:0">Pour passer de la version en ligne à la version hors ligne, ou l'inverse : copie les données d'un côté, puis colle-les de l'autre. ${OFFLINE ? 'Tu es dans la version hors ligne.' : 'Tu es dans la version en ligne.'}</p>
+      <div class="row">${OFFLINE ? `<button type="button" class="btn ghost" data-act="download">Télécharger un fichier</button>${fileImportBtn('Importer un fichier', 'btn ghost')}` : ''}
+        <button type="button" class="btn ghost" data-act="export">Copier les données</button>
+        <button type="button" class="btn ghost" data-act="import-open" ${S.readOnly ? 'disabled' : ''}>Coller des données</button></div>
+      ${T.out ? `<label class="flabel" for="export-txt">${T.copied ? 'Copié. ' : 'Copie ce texte en entier : '}${S.agents.length} agents, ${S.engins.length} engins.</label>
+        <textarea id="export-txt" class="xfer" readonly>${esc(T.out)}</textarea>` : ''}
+      ${T.importing ? `<label class="flabel" for="import-txt">Colle ici le texte copié depuis l'autre version</label>
+        ${T.fileName ? `<p style="margin:0"><b>${esc(T.fileName)}</b> · ${esc(T.resume || '')}</p>` : `<textarea id="import-txt" class="xfer" data-k="import" placeholder='{"app":"armement-cis-montivilliers", …}'>${esc(T.inTxt || '')}</textarea>`}
+        ${T.err ? `<p class="err" role="alert">${esc(T.err)}</p>` : ''}
+        <div class="row">${confirmBtn('import', 'Remplacer les données par ce texte', 'Confirmer : tout remplacer', 'btn danger')}
+          <button type="button" class="linkbtn" data-act="import-close">Annuler</button></div>
+        <span class="hint">Toutes les données de cette version (agents, engins, historique) seront remplacées.</span>` : ''}
+    </section>`;
+  }
+  function fileImportBtn(label, cls) {
+    return `<label class="${cls} filebtn">${esc(label)}<input type="file" class="sr-file" accept=".json,application/json,text/plain" data-k="importfile" ${S.readOnly ? 'disabled' : ''}></label>`;
+  }
+  function parseExport(txt) {
+    let d = null;
+    try { d = JSON.parse((txt || '').trim()); } catch (e) { d = null; }
+    return d && d.app === 'armement-cis-montivilliers' && Array.isArray(d.agents) && Array.isArray(d.engins) ? d : null;
+  }
+  function onFileChosen(input) {
+    const file = input.files && input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const txt = String(reader.result || ''), d = parseExport(txt);
+      S.tab = 'engins'; S.confirm = null;
+      if (!d) { S.transfer = { importing: true, fileName: file.name, inTxt: '', err: "Ce fichier n'est pas un fichier de données de l'outil." }; }
+      else if (!S.agents.length && !S.engins.length) { S.transfer = { inTxt: txt }; importData(); }
+      else S.transfer = { importing: true, fileName: file.name, inTxt: txt, resume: `${d.agents.length} agents, ${d.engins.length} engins, données du ${fmtSec(d.exporte, true)}` };
+      render();
+      const sec = document.getElementById('transfert'); if (sec && S.transfer) sec.scrollIntoView({ block: 'start' });
+    };
+    reader.onerror = () => { S.transfer = { importing: true, err: 'Impossible de lire ce fichier.' }; S.tab = 'engins'; render(); };
+    reader.readAsText(file);
+    input.value = '';
+  }
+  function downloadData() {
+    const blob = new Blob([exportText()], { type: 'application/json' });
+    const d = new Date(), name = `armement-donnees-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast(`Fichier ${name} créé.`);
+  }
+
+  function importData() {
+    const T = S.transfer || {};
+    const el = document.getElementById('import-txt'); if (el) T.inTxt = el.value;
+    const d = parseExport(T.inTxt);
+    if (!d) {
+      T.err = "Texte non reconnu : colle exactement le texte obtenu avec « Copier les données », sans rien couper."; S.transfer = T; return;
+    }
+    const oldA = S.agents.map(a => a.id), oldE = S.engins.map(e => e.id);
+    S.agents = d.agents.filter(a => a && a.id); S.engins = d.engins.filter(e => e && e.id).sort(byOrdre); S.journal = d.journal || [];
+    if (S.store === 'db') {
+      const newA = new Set(S.agents.map(a => a.id)), newE = new Set(S.engins.map(e => e.id));
+      S.agents.forEach(putAgent); S.engins.forEach(putEngin); putJournal();
+      oldA.filter(id => !newA.has(id)).forEach(delAgent); oldE.filter(id => !newE.has(id)).forEach(delEngin);
+    } else lsSave();
+    S.transfer = null;
+    toast(`Données importées : ${S.agents.length} agents, ${S.engins.length} engins (copie du ${fmtSec(d.exporte, true)}).`);
+  }
+
+  function rolesEditor(e, k, w = 'roles') {
+    const id = k === 'engin' ? e.id : '', p = (k === 'engin' ? `en-${esc(e.id)}` : 'draft-engin') + (w === 'degrade' ? '-deg' : '');
+    const rk = k === 'engin' ? 'role' : 'draftRole';
+    const ro = S.readOnly && k === 'engin' ? 'disabled' : '';
+    const list = e[w] || [];
+    const attrs = i => `data-k="${rk}" data-w="${w}" data-id="${esc(id)}" data-i="${i}"`;
+    return `<div class="roles">${list.map((r, i) => `<div class="role">
+        <input id="${p}-r${i}-label" aria-label="Nom du poste" ${attrs(i)} data-f="label" value="${esc(r.label)}" ${ro}>
+        <select id="${p}-r${i}-type" aria-label="Type de poste" ${attrs(i)} data-f="type" ${ro}>${ROLE_TYPES.map(([v, l]) => `<option value="${v}" ${r.type === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+        ${r.type === 'COND'
+          ? `<select id="${p}-r${i}-cod" aria-label="Spécialité de conduite requise" ${attrs(i)} data-f="cod" ${ro}>${COD_LIST.map(c => `<option value="${c}" ${r.cod === c ? 'selected' : ''}>COD${c} requis</option>`).join('')}</select>`
+          : `<select id="${p}-r${i}-grade" aria-label="Grade minimum" ${attrs(i)} data-f="gradeMin" ${ro}>${GRADES.map(g => `<option value="${g}" ${r.gradeMin === g ? 'selected' : ''}>${g === 'SAP2' ? 'Tout grade' : g + ' minimum'}</option>`).join('')}</select>`}
+        <button type="button" class="x" data-act="del-role" data-k="${k}" data-w="${w}" data-id="${esc(id)}" data-i="${i}" aria-label="Retirer le poste ${esc(r.label)}" ${ro}>Retirer</button>
+      </div>`).join('')}</div>
+      <div><button type="button" class="btn ghost" data-act="add-role" data-k="${k}" data-w="${w}" data-id="${esc(id)}" ${ro}>Ajouter un poste</button></div>`;
+  }
+
+  function compositions(e, k) {
+    const id = k === 'engin' ? e.id : '';
+    const ro = S.readOnly && k === 'engin' ? 'disabled' : '';
+    const deg = e.degrade && e.degrade.length;
+    return `<div class="fgroup"><span class="flabel">Composition complète · ${e.roles.length} poste${e.roles.length > 1 ? 's' : ''}</span>${rolesEditor(e, k, 'roles')}</div>
+      <div class="fgroup deg">
+        <span class="flabel">Départ dégradé${deg ? ` · ${e.degrade.length} poste${e.degrade.length > 1 ? 's' : ''}` : ''}</span>
+        ${deg
+          ? `${rolesEditor(e, k, 'degrade')}<span class="hint">Utilisé seulement si la composition complète ne peut pas être armée.</span>
+             <div><button type="button" class="linkbtn" data-act="del-degrade" data-k="${k}" data-id="${esc(id)}" ${ro}>Supprimer le départ dégradé</button></div>`
+          : `<span class="hint">Aucun. L'engin ne part qu'avec sa composition complète.</span>
+             <div><button type="button" class="btn ghost" data-act="add-degrade" data-k="${k}" data-id="${esc(id)}" ${ro}>Ajouter un départ dégradé</button></div>`}
+      </div>`;
+  }
+
+  function enginDraftCard() {
+    const d = S.draftEngin;
+    return `<section class="card draft" aria-label="Nouvel engin">
+      <div class="draft-head"><h2>Nouvel engin</h2><button class="linkbtn" data-act="cancel-engin">Fermer</button></div>
+      <div class="editor">
+        <div class="fgroup"><span class="flabel">Modèle</span>${chips('draftEngin', '', 'type', 'one', ENGIN_TYPES, v => d.type === v)}
+          <span class="hint">Le modèle préremplit la mission et les postes ; tout reste modifiable.</span></div>
+        <label class="f">Nom de l'engin<input id="draft-engin-nom" data-k="draftEngin" data-id="" data-f="nom" value="${esc(d.nom)}" autocomplete="off"></label>
+        <div class="fgroup"><span class="flabel">Mission</span>${chips('draftEngin', '', 'mission', 'one', MISSIONS, v => d.mission === v)}
+          <span class="hint">Les agents contre-indiqués pour cette mission ne seront pas proposés.</span></div>
+        ${compositions(d, 'draftEngin')}
+        ${S.draftError ? `<p class="err" role="alert">${esc(S.draftError)}</p>` : ''}
+        <div class="row"><button class="btn" data-act="save-engin">Créer l'engin</button></div>
+      </div>
+    </section>`;
+  }
+
+  function enginRow(e) {
+    const open = S.open.has(e.id), id = esc(e.id), ro = S.readOnly ? 'disabled' : '';
+    const typeLbl = (ENGIN_TYPES.find(t => t[0] === e.type) || [0, e.type])[1];
+    let html = `<li class="card"><div class="engin-head">
+      <button class="agent-name" data-act="toggle" data-id="${id}" aria-expanded="${open}">
+        <b>${esc(e.nom)}</b>
+        <span>${esc(typeLbl)} · ${esc(missionLabel(missionOf(e)))} · ${e.roles.length} poste${e.roles.length > 1 ? 's' : ''} : ${e.roles.map(r => esc(r.label) + ' (' + esc(roleCond(r)) + ')').join(', ')}${e.degrade && e.degrade.length ? ` · dégradé à ${e.degrade.length} : ${e.degrade.map(r => esc(r.label) + ' (' + esc(roleCond(r)) + ')').join(', ')}` : ''}</span>
+      </button>
+      ${e.aVerifier ? '<span class="pill neutral">À vérifier</span>' : '<span class="pill ok">Vérifié</span>'}
+    </div>`;
+    if (open) {
+      html += `<div class="editor">
+        <div class="fields">
+          <label class="f">Nom de l'engin<input id="en-${id}-nom" data-k="engin" data-id="${id}" data-f="nom" value="${esc(e.nom)}" ${ro}></label>
+          <label class="f">Type<select id="en-${id}-type" data-k="engin" data-id="${id}" data-f="type" ${ro}>${ENGIN_TYPES.map(([v, l]) => `<option value="${v}" ${e.type === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+        </div>
+        <div class="fgroup"><span class="flabel">Mission</span>${chips('engin', e.id, 'mission', 'one', MISSIONS, v => missionOf(e) === v)}</div>
+        ${compositions(e, 'engin')}
+        <div class="checks"><label><input type="checkbox" id="en-${id}-verif" data-k="engin" data-id="${id}" data-f="verifie" ${e.aVerifier ? '' : 'checked'} ${ro}>Composition vérifiée</label></div>
+        <div class="row between">
+          <button class="linkbtn" data-act="toggle" data-id="${id}">Fermer</button>
+          ${confirmBtn('del-engin:' + e.id, "Supprimer l'engin", 'Confirmer la suppression', 'btn danger')}
+        </div>
+      </div>`;
+    }
+    return html + '</li>';
+  }
+
+  /* ---------- Actions ---------- */
+  const findA = id => S.agents.find(a => a.id === id);
+  const findE = id => S.engins.find(e => e.id === id);
+  function target(k, id) {
+    if (k === 'agent') return findA(id);
+    if (k === 'engin' || k === 'role') return findE(id);
+    if (k === 'draftAgent') return S.draftAgent;
+    if (k === 'draftEngin' || k === 'draftRole') return S.draftEngin;
+    return null;
+  }
+  function commit(k, obj) {
+    if (k === 'agent') putAgent(obj);
+    else if (k === 'engin' || k === 'role') putEngin(obj);
+  }
+
+  function runConfirmed(key) {
+    const [kind, arg] = key.split(':');
+    if (kind === 'valider') valider(arg.split(','));
+    else if (kind === 'annuler-depart') annulerDernier();
+    else if (kind === 'del-agent') { S.agents = S.agents.filter(a => a.id !== arg); S.open.delete(arg); delAgent(arg); toast('Agent supprimé.'); }
+    else if (kind === 'del-engin') { S.engins = S.engins.filter(e => e.id !== arg); S.sel.delete(arg); S.open.delete(arg); delEngin(arg); toast('Engin supprimé.'); }
+    else if (kind === 'import') importData();
+    else if (kind === 'tous-indispo') {
+      S.agents.forEach(a => { if (a.statut !== 'indispo') { a.statut = 'indispo'; delete a.statutAvant; putAgent(a); } });
+      toast('Tout l\'effectif est passé indisponible.');
+    }
+  }
+
+  function valider(ids) {
+    const vehs = ids.map(findE).filter(Boolean);
+    if (!vehs.length) return;
+    const { result } = armer(vehs, S.agents);
+    const now = new Date().toISOString();
+    const partis = new Set();
+    result.forEach(r => r.postes.forEach(p => { if (p.agent) partis.add(p.agent.id); }));
+    const avant = S.agents.filter(a => partis.has(a.id)).map(a => ({ id: a.id, nom: a.nom, dernierDepart: a.dernierDepart ?? null, retour: a.retour ?? null, statut: a.statut }));
+    S.agents.forEach(a => {
+      if (!partis.has(a.id)) return;
+      a.statutAvant = a.statut; a.statut = 'inter'; a.dernierDepart = now; delete a.retour; putAgent(a);
+    });
+    S.journal = [{ date: now, avant, engins: result.map(r => ({ nom: r.veh.nom + (r.degrade ? ` (dégradé à ${r.postes.length})` : ''), equipage: r.postes.map(p => ({ poste: p.role.label, nom: p.agent ? p.agent.nom : null })) })) }, ...S.journal].slice(0, 40);
+    putJournal();
+    toast(`Départ validé : ${partis.size} agent${partis.size > 1 ? 's' : ''} en intervention.`);
+  }
+
+  function annulerDernier() {
+    const j = S.journal[0]; if (!j || !j.avant) return;
+    let n = 0; const repartis = [];
+    j.avant.forEach(av => {
+      const a = findA(av.id); if (!a) return;
+      if (a.dernierDepart !== j.date) { repartis.push(a.nom); return; }
+      a.dernierDepart = av.dernierDepart ?? null;
+      if (av.retour) a.retour = av.retour; else delete a.retour;
+      if (a.statut === 'inter') a.statut = av.statut;
+      delete a.statutAvant;
+      putAgent(a); n++;
+    });
+    S.journal = S.journal.slice(1); putJournal();
+    toast(repartis.length
+      ? `Départ annulé. ${repartis.join(', ')} ${repartis.length > 1 ? 'sont repartis' : 'est reparti'} depuis : date conservée.`
+      : `Départ annulé : ${n} agent${n > 1 ? 's' : ''} remis comme avant.`);
+  }
+
+  // ret : undefined = retour inchangé, null = effacé, iso = nouveau retour
+  function quickSet(a, iso, ret) {
+    a.dernierDepart = iso;
+    if (ret !== undefined) { if (ret) a.retour = ret; else delete a.retour; }
+    if (a.retour && iso && Date.parse(a.retour) < Date.parse(iso)) delete a.retour; // retour d'un ancien départ
+    putAgent(a);
+    S.quick = null; S.quickVal = ''; S.quickRVal = ''; S.quickError = ''; S.quickShowR = false;
+    toast(`${a.nom} : départ ${fmtSec(iso, true)}${a.retour ? ', retour ' + fmtSec(a.retour, true) : ''}`);
+  }
+  function quickSave(id) {
+    const a = findA(id); if (!a) return;
+    const dIn = document.getElementById('qd-' + id), rIn = document.getElementById('qr-' + id);
+    if (dIn) S.quickVal = dIn.value;
+    if (rIn) S.quickRVal = rIn.value;
+    const dd = quickDigits(S.quickVal), rd = quickDigits(S.quickRVal);
+    if (!dd && !rd) { S.quickError = 'Tape une heure de départ ou de retour.'; S.focusAfter = 'qd-' + id; return; }
+    let dep = a.dernierDepart || null;
+    if (dd) { const r = quickParse(dd); if (r.err) { S.quickError = r.err; S.focusAfter = 'qd-' + id; return; } dep = r.iso; }
+    let ret;
+    if (rd) {
+      const r = quickParse(rd); if (r.err) { S.quickError = 'Retour : ' + r.err; S.focusAfter = 'qr-' + id; return; }
+      if (dep && Date.parse(r.iso) < Date.parse(dep)) { S.quickError = 'Le retour est avant le départ : vérifie les deux heures.'; S.focusAfter = 'qr-' + id; return; }
+      ret = r.iso;
+    }
+    quickSet(a, dep, ret);
+  }
+
+  function retour(a) { a.statut = a.statutAvant || 'dispo'; delete a.statutAvant; a.retour = new Date().toISOString(); putAgent(a); }
+
+  function pick(b) {
+    const { k, id, f, mode, v } = b.dataset;
+    const o = target(k, id); if (!o) return;
+    if (mode === 'bool') o[v] = !o[v];
+    else if (mode === 'many') {
+      const val = f === 'cod' ? +v : v;
+      const s = new Set(o[f] || []); s.has(val) ? s.delete(val) : s.add(val);
+      o[f] = [...s].sort((x, y) => (typeof x === 'number' ? x - y : String(x).localeCompare(String(y))));
+    } else if (k === 'draftEngin' && f === 'type') {
+      const nouveau = draftFromModel(v);
+      if (!o.nomAuto) nouveau.nom = o.nom, nouveau.nomAuto = false;
+      S.draftEngin = nouveau;
+    } else o[f] = v;
+    commit(k, o);
+  }
+
+  function saveDraftAgent() {
+    const d = S.draftAgent, nom = (d.nom || '').trim();
+    if (!nom) { S.draftError = "Indique le nom de l'agent avant d'enregistrer."; S.focusAfter = 'draft-agent-nom'; return; }
+    if (S.agents.some(a => a.nom.toLowerCase() === nom.toLowerCase())) { S.draftError = `${nom} est déjà dans l'effectif.`; S.focusAfter = 'draft-agent-nom'; return; }
+    const a = { ...d, nom, id: uid('a') };
+    S.agents.push(a); putAgent(a);
+    S.draftAgent = newDraftAgent(d.statut); S.draftError = '';
+    S.focusAfter = 'draft-agent-nom';
+    toast(`${nom} ajouté à l'effectif.`);
+  }
+
+  function saveDraftEngin() {
+    const d = S.draftEngin, nom = (d.nom || '').trim();
+    if (!nom) { S.draftError = "Indique le nom de l'engin."; S.focusAfter = 'draft-engin-nom'; return; }
+    if (!d.roles.length) { S.draftError = "Ajoute au moins un poste."; return; }
+    const e = { id: uid('v'), nom, type: d.type, mission: d.mission, roles: d.roles, degrade: d.degrade && d.degrade.length ? d.degrade : null, aVerifier: true, ordre: Math.max(0, ...S.engins.map(x => x.ordre ?? 0)) + 1 };
+    S.engins.push(e); putEngin(e);
+    S.draftEngin = null; S.draftError = '';
+    toast(`${nom} ajouté aux engins.`);
+  }
+
+  function editRole(e, w, i, f, value) {
+    const r = (e[w] || [])[i]; if (!r) return false;
+    if (f === 'type') {
+      r.type = value;
+      if (r.type === 'COND') { r.cod = r.cod ?? 0; delete r.gradeMin; if (r.label === "Chef d'agrès" || r.label === 'Équipier') r.label = 'Conducteur'; }
+      else { r.gradeMin = r.gradeMin || (r.type === 'CA' ? 'SGT' : 'SAP2'); delete r.cod; }
+    } else if (f === 'cod') r.cod = +value;
+    else if (f === 'label') { const v = value.trim(); if (!v) return false; r.label = v; }
+    else r[f] = value;
+    return true;
+  }
+
+  document.querySelector('.top').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-tab]'); if (!b) return;
+    S.tab = b.dataset.tab; S.confirm = null; render(); window.scrollTo({ top: 0 });
+  });
+
+  $view.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-act]'); if (!b || b.disabled) return;
+    const act = b.dataset.act, id = b.dataset.id;
+    if (act !== 'confirm' && S.confirm) S.confirm = null;
+    switch (act) {
+      case 'tab': S.tab = b.dataset.v; break;
+      case 'mode': S.mode = b.dataset.v; break;
+      case 'sel': S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); break;
+      case 'toggle': S.open.has(id) ? S.open.delete(id) : (S.open.add(id), S.quick === id && (S.quick = null)); break;
+      case 'quick-showr': S.quickShowR = true; break;
+      case 'quick': S.quick = S.quick === id ? null : id; S.quickVal = ''; S.quickRVal = ''; S.quickError = ''; S.quickShowR = false; if (S.quick) S.open.delete(id); break;
+      case 'quick-pick': { const a = findA(id); if (a) { const now = b.dataset.v === 'now'; quickSet(a, now ? new Date().toISOString() : b.dataset.v, now ? null : (b.dataset.r || null)); } break; }
+      case 'quick-save': quickSave(id); break;
+      case 'bulk-open': S.bulk = { val: '', rval: '', sel: new Set(), err: '', all: false }; S.draftAgent = null; window.scrollTo({ top: 0 }); break;
+      case 'bulk-close': S.bulk = null; break;
+      case 'export': {
+        const out = exportText(); S.transfer = { out };
+        const done = () => { S.transfer = { out, copied: true }; render(); };
+        try { navigator.clipboard.writeText(out).then(done, () => {}); } catch (e) { /* copie manuelle */ }
+        S.focusAfter = 'export-txt';
+        break;
+      }
+      case 'import-open': S.transfer = { importing: true }; S.focusAfter = 'import-txt'; break;
+      case 'download': downloadData(); break;
+      case 'import-close': S.transfer = null; break;
+      case 'bulk-showr': if (S.bulk) S.bulk.showR = true; break;
+      case 'bulk-toggle': if (S.bulk) { S.bulk.sel.has(id) ? S.bulk.sel.delete(id) : S.bulk.sel.add(id); S.bulk.err = ''; } break;
+      case 'bulk-clear': if (S.bulk) S.bulk.sel.clear(); break;
+      case 'bulk-all': if (S.bulk) S.bulk.all = !S.bulk.all; break;
+      case 'bulk-when': if (S.bulk) {
+        const now = b.dataset.v === 'now', ret = now ? null : retourDuDepart(b.dataset.v);
+        S.bulk.val = fmtSec(now ? new Date().toISOString() : b.dataset.v); S.bulk.rval = ret ? fmtSec(ret) : ''; S.bulk.err = '';
+      } break;
+      case 'bulk-save': bulkSave(); break;
+      case 'statut': { const a = findA(id); if (a && a.statut !== b.dataset.v) { a.statut = b.dataset.v; putAgent(a); } break; }
+      case 'retour': { const a = findA(id); if (a) retour(a); break; }
+      case 'retour-tous': S.agents.filter(a => a.statut === 'inter').forEach(retour); toast('Retour au centre enregistré.'); break;
+      case 'confirm': {
+        const key = b.dataset.key;
+        clearTimeout(S.confirmTimer);
+        if (S.confirm === key) { S.confirm = null; runConfirmed(key); }
+        else { S.confirm = key; S.confirmTimer = setTimeout(() => { S.confirm = null; render(); }, 5000); }
+        break;
+      }
+      case 'pick': pick(b); break;
+      case 'new-agent': S.draftAgent = newDraftAgent(); S.draftError = ''; S.focusAfter = 'draft-agent-nom'; window.scrollTo({ top: 0 }); break;
+      case 'cancel-agent': S.draftAgent = null; S.draftError = ''; break;
+      case 'save-agent': saveDraftAgent(); break;
+      case 'new-engin': S.draftEngin = draftFromModel('VSAV'); S.draftError = ''; window.scrollTo({ top: 0 }); break;
+      case 'cancel-engin': S.draftEngin = null; S.draftError = ''; break;
+      case 'save-engin': saveDraftEngin(); break;
+      case 'add-role': { const k = b.dataset.k, w = b.dataset.w || 'roles', e = target(k, id); if (e) { (e[w] = e[w] || []).push({ label: 'Équipier', type: 'EQ', gradeMin: 'SAP2' }); commit(k, e); } break; }
+      case 'del-role': {
+        const k = b.dataset.k, w = b.dataset.w || 'roles', e = target(k, id);
+        if (e && e[w]) { e[w].splice(+b.dataset.i, 1); if (w === 'degrade' && !e[w].length) e.degrade = null; commit(k, e); }
+        break;
+      }
+      case 'add-degrade': {
+        const k = b.dataset.k, e = target(k, id);
+        if (e) {
+          const ca = e.roles.find(r => r.type === 'CA'), cond = e.roles.find(r => r.type === 'COND');
+          e.degrade = [ca ? { ...ca } : { label: "Chef d'agrès", type: 'CA', gradeMin: 'SGT' }, cond ? { ...cond } : { label: 'Conducteur', type: 'COND', cod: 0 }];
+          commit(k, e);
+        }
+        break;
+      }
+      case 'del-degrade': { const k = b.dataset.k, e = target(k, id); if (e) { e.degrade = null; commit(k, e); } break; }
+    }
+    render();
+  });
+
+  // Saisie libre dans les formulaires d'ajout : gardée en mémoire sans redessiner
+  $view.addEventListener('input', ev => {
+    const t = ev.target, k = t.dataset.k;
+    if (k === 'quick' || k === 'quickr' || k === 'bulk' || k === 'bulkr') {
+      let d = quickDigits(t.value);
+      const prev = t.dataset.digits || '';
+      if (ev.inputType && ev.inputType.startsWith('delete') && d === prev && d.length) d = d.slice(0, -1); // effacer un séparateur
+      t.dataset.digits = d; t.value = quickMask(d);
+      if (k === 'quick') S.quickVal = t.value;
+      else if (k === 'quickr') S.quickRVal = t.value;
+      else if (S.bulk) { if (k === 'bulk') S.bulk.val = t.value; else S.bulk.rval = t.value; S.bulk.err = ''; }
+      return;
+    }
+    if (k === 'import' && S.transfer) { S.transfer.inTxt = t.value; S.transfer.err = ''; return; }
+    if (k === 'draftAgent' && t.dataset.f === 'nom') { S.draftAgent.nom = t.value; }
+    if (k === 'draftEngin' && t.dataset.f === 'nom') { S.draftEngin.nom = t.value; S.draftEngin.nomAuto = false; }
+  });
+
+  $view.addEventListener('keydown', ev => {
+    const t = ev.target;
+    if (t.dataset && (t.dataset.k === 'bulk' || t.dataset.k === 'bulkr') && ev.key === 'Enter') { ev.preventDefault(); S.dirty = false; t.blur(); render(); return; }
+    if (t.dataset && (t.dataset.k === 'quick' || t.dataset.k === 'quickr') && ev.key === 'Enter') { ev.preventDefault(); quickSave(t.dataset.id); S.dirty = false; t.blur(); render(); }
+  });
+
+  $view.addEventListener('change', ev => {
+    if (ev.target.dataset && ev.target.dataset.k === 'importfile') { onFileChosen(ev.target); return; }
+    const t = ev.target, k = t.dataset.k, f = t.dataset.f; if (!k || !f) return;
+    const o = target(k, t.dataset.id); if (!o) return;
+    if (k === 'agent' || k === 'draftAgent') {
+      if (f === 'dernierDepart') { const d = t.value ? new Date(t.value) : null; o.dernierDepart = d && !isNaN(d) ? d.toISOString() : null; }
+      else if (f === 'nom') {
+        const v = t.value.trim();
+        if (k === 'agent') { if (!v) { t.value = o.nom; return; } o.nom = v; } else o.nom = t.value;
+      }
+      else o[f] = t.value;
+    } else if (k === 'engin' || k === 'draftEngin') {
+      if (f === 'verifie') o.aVerifier = !t.checked;
+      else if (f === 'nom') {
+        const v = t.value.trim();
+        if (k === 'engin') { if (!v) { t.value = o.nom; return; } o.nom = v; } else { o.nom = t.value; o.nomAuto = false; }
+      }
+      else o[f] = t.value;
+    } else if (k === 'role' || k === 'draftRole') {
+      const w = t.dataset.w || 'roles';
+      if (!editRole(o, w, +t.dataset.i, f, t.value)) { t.value = (o[w] || [])[+t.dataset.i]?.label || ''; return; }
+    }
+    commit(k, o);
+    if (t.tagName === 'SELECT' || t.type === 'checkbox') { S.dirty = false; render(); }
+    else { S.dirty = true; setTimeout(flush, 0); }
+  });
+
+  render();
+  start();
+})();
+</script>
+
+</body>
+</html>
