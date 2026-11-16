@@ -171,6 +171,14 @@ main { display: grid; gap: 18px; padding-top: 18px; }
 .qd::placeholder { color: var(--muted); opacity: .6; font-weight: 400; }
 .chip.when { text-align: left; line-height: 1.2; }
 .bulk-group { display: grid; gap: 6px; }
+.howto { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
+.xfer.cap { min-height: 90px; font-size: 16px; }
+.cap-row { padding: 10px 12px; display: grid; gap: 6px; }
+.cap-name { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cap-name b .nf { font: inherit; }
+.cap-ch { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: baseline; font-size: 14px; }
+.cap-ch input { width: 18px; height: 18px; accent-color: var(--accent); vertical-align: middle; }
+.note .cap-ch, .cap-row label.cap-ch:first-child { grid-template-columns: auto 1fr; }
 .filebtn { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
 .sr-file { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .xfer { width: 100%; min-height: 110px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); padding: 8px 10px; font: 12px/1.4 var(--f-mono); resize: vertical; }
@@ -232,6 +240,7 @@ footer { font-size: 12px; color: var(--muted); padding-top: 8px; }
       <button role="tab" data-tab="depart" aria-selected="true">Départ</button>
       <button role="tab" data-tab="effectif" aria-selected="false">Effectif</button>
       <button role="tab" data-tab="engins" aria-selected="false">Engins</button>
+      <button role="tab" data-tab="captures" aria-selected="false">Captures</button>
     </nav>
   </header>
   <div id="banner" class="note info" hidden style="margin-top:14px"></div>
@@ -652,7 +661,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
     if (!S.loaded.agents || !S.loaded.engins) { $view.innerHTML = `<div class="empty"><p class="muted">Chargement de l'effectif et des engins…</p></div>`; return; }
     const activeId = document.activeElement && $view.contains(document.activeElement) ? document.activeElement.id : '';
-    $view.innerHTML = S.tab === 'depart' ? viewDepart() : S.tab === 'effectif' ? viewEffectif() : viewEngins();
+    $view.innerHTML = S.tab === 'depart' ? viewDepart() : S.tab === 'effectif' ? viewEffectif() : S.tab === 'captures' ? viewCaptures() : viewEngins();
     const focusId = S.focusAfter || activeId; S.focusAfter = '';
     if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus({ preventScroll: !S.focusAfterScroll }); if (el.readOnly && el.select) el.select(); } }
   }
@@ -1065,6 +1074,170 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
   }
 
   /* ---------- Engins ---------- */
+  /* ---------- Captures : mise à jour depuis le texte copié de la liste de garde ---------- */
+  // Le texte vient du « Texte en direct » de l'iPhone (Photos → icône Texte en direct → Copier tout).
+  const CAP_GRADES = '(SAP\\s?[12]|SAP|CPL|CCH|SGT|SCH|ADJ|ADC|LTN|CPT|CDT)';
+  const CAP_SECTIONS = [[/^astreinte\b/i, 'astreinte'], [/^dhcis\b/i, 'astreinte'], [/^disponibles?\b/i, 'dispo'], [/^r[ée]serves?\b/i, 'reserve'], [/^en\s+interventions?\b/i, 'inter'], [/^indisponibles?\b/i, 'indispo']];
+  const CAP_DATE = /(\d{1,2})\/(\d{1,2})\/(\d{4})\D{0,4}(\d{1,2})[:h.](\d{2})(?:[:.](\d{2}))?/;
+  function normNom(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, ''); }
+  function normGrade(g) { const x = String(g || '').toUpperCase().replace(/\s/g, ''); return x === 'SAP' ? 'SAP2' : x; }
+  function joliNom(s) { return String(s || '').trim().split(/\s+/).map(w => w === w.toUpperCase() ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' '); }
+  function lev(a, b) {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    return d[a.length][b.length];
+  }
+  // Lit un texte collé : rubriques, « GRADE Prénom Nom », puis la date du dernier départ
+  // Les agents lus avant la première rubrique d'une capture (liste qui continue) sont marqués « herite »
+  function capLire(txt) {
+    const reAgent = new RegExp('^' + CAP_GRADES + '\\.?\\s+(.+)$', 'i');
+    let section = null, cur = null;
+    const agents = [];
+    String(txt || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(l => {
+      const ma = l.match(reAgent);
+      const sec = !ma && CAP_SECTIONS.find(([re]) => re.test(l));
+      if (sec) { section = sec[1]; cur = null; return; }
+      if (ma) {
+        const nom = ma[2].replace(/dernier\s*d[ée]part.*$/i, '').replace(CAP_DATE, '').replace(/[^A-Za-zÀ-ÿ'’ -]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (nom.length > 2) { cur = { grade: normGrade(ma[1]), nom: joliNom(nom), statut: section, herite: !section, date: null }; agents.push(cur); }
+      }
+      const md = l.match(CAP_DATE);
+      if (md && cur && !cur.date) {
+        const dt = new Date(+md[3], +md[2] - 1, +md[1], +md[4], +md[5], +(md[6] || 0));
+        if (!isNaN(dt) && dt.getDate() === +md[1]) cur.date = dt.toISOString();
+      }
+    });
+    return { agents, section };
+  }
+  function trouverAgent(nom) {
+    const n = normNom(nom); if (!n) return null;
+    const nRev = normNom(String(nom).split(/\s+/).reverse().join(' '));
+    let best = null, bestD = 99, ambigu = false;
+    for (const a of S.agents) {
+      const k = normNom(a.nom), kRev = normNom(String(a.nom).split(/\s+/).reverse().join(' '));
+      if (k === n || kRev === n || k === nRev) return a;
+      const d = Math.min(lev(k, n), lev(kRev, n));
+      if (d < bestD) { bestD = d; best = a; ambigu = false; } else if (d === bestD) ambigu = true;
+    }
+    return !ambigu && bestD <= Math.max(1, Math.floor(n.length / 8)) ? best : null;
+  }
+  function capNouveau() { return { lus: new Map(), lastSection: null, pastes: 0, absents: true, noGrade: new Set(), noCreate: new Set(), err: '' }; }
+  function capAjouter(txt) {
+    const C = S.cap || (S.cap = capNouveau());
+    const r = capLire(txt);
+    // Haut de capture sans rubrique : on reprend la rubrique d'un agent déjà lu sur la capture précédente
+    const connu = r.agents.find(l => l.herite && C.lus.get(normNom(l.nom)) && C.lus.get(normNom(l.nom)).statut);
+    const suite = connu ? C.lus.get(normNom(connu.nom)).statut : C.lastSection;
+    r.agents.forEach(l => { if (l.herite) l.statut = suite || null; delete l.herite; });
+    if (!r.agents.length) { C.err = "Aucun agent trouvé dans ce texte. Copie bien le texte de la liste de garde : grade, nom et « Dernier départ »."; return; }
+    r.agents.forEach(l => {
+      const k = normNom(l.nom), old = C.lus.get(k);
+      C.lus.set(k, old ? { ...old, ...l, statut: l.statut || old.statut, date: l.date || old.date } : l);
+    });
+    C.lastSection = r.section || suite || C.lastSection; C.pastes++; C.err = '';
+    toast(`${r.agents.length} agent${r.agents.length > 1 ? 's' : ''} lu${r.agents.length > 1 ? 's' : ''} dans cette capture.`);
+  }
+  function capPlan() {
+    const vus = new Set(), lignes = [], inconnus = [];
+    for (const l of S.cap.lus.values()) {
+      const a = trouverAgent(l.nom);
+      if (!a) { inconnus.push(l); continue; }
+      if (vus.has(a.id)) continue;
+      vus.add(a.id);
+      const statut = l.statut || a.statut;
+      lignes.push({ a, l, statut, chStatut: statut !== a.statut, chDate: !!l.date && l.date !== a.dernierDepart,
+        chGrade: GRADES.includes(l.grade) && l.grade !== a.grade, sansDate: !l.date, sansSection: !l.statut });
+    }
+    const absents = S.agents.filter(a => !vus.has(a.id) && ['astreinte', 'dispo', 'reserve', 'inter'].includes(a.statut)).sort(byFamille);
+    return { lignes: lignes.sort((x, y) => byFamille(x.a, y.a)), inconnus, absents };
+  }
+  function capNbChangements(P) {
+    return P.lignes.filter(r => r.chStatut || r.chDate || (r.chGrade && !S.cap.noGrade.has(r.a.id))).length
+      + (S.cap.absents ? P.absents.length : 0) + P.inconnus.filter(l => !S.cap.noCreate.has(normNom(l.nom))).length;
+  }
+  function capAppliquer() {
+    const P = capPlan(), undo = { agents: [], crees: [] };
+    const snap = a => undo.agents.push({ id: a.id, statut: a.statut, statutAvant: a.statutAvant, dernierDepart: a.dernierDepart ?? null, retour: a.retour ?? null, grade: a.grade });
+    let n = 0;
+    P.lignes.forEach(r => {
+      const a = r.a, grade = r.chGrade && !S.cap.noGrade.has(a.id);
+      if (!r.chStatut && !r.chDate && !grade) return;
+      snap(a);
+      if (r.chStatut) {
+        if (r.statut === 'inter') a.statutAvant = ['astreinte', 'dispo', 'reserve'].includes(a.statut) ? a.statut : 'astreinte'; else delete a.statutAvant;
+        a.statut = r.statut;
+      }
+      if (r.chDate) { a.dernierDepart = r.l.date; if (a.retour && Date.parse(a.retour) < Date.parse(r.l.date)) delete a.retour; }
+      if (grade) a.grade = r.l.grade;
+      putAgent(a); n++;
+    });
+    if (S.cap.absents) P.absents.forEach(a => { snap(a); a.statut = 'indispo'; delete a.statutAvant; putAgent(a); n++; });
+    P.inconnus.filter(l => !S.cap.noCreate.has(normNom(l.nom))).forEach(l => {
+      const a = { id: uid('a'), nom: l.nom, grade: GRADES.includes(l.grade) ? l.grade : '?', gradeEq: '', equipe: '', cod: [], ci: [], equipierSeul: false, vsavSeul: false, statut: l.statut || 'indispo', dernierDepart: l.date || null };
+      S.agents.push(a); putAgent(a); undo.crees.push(a.id); n++;
+    });
+    S.capUndo = undo; S.cap = null;
+    toast(`Mise à jour appliquée : ${n} agent${n > 1 ? 's' : ''} modifié${n > 1 ? 's' : ''}.`);
+  }
+  function capAnnuler() {
+    const U = S.capUndo; if (!U) return;
+    U.agents.forEach(s => {
+      const a = findA(s.id); if (!a) return;
+      a.statut = s.statut; if (s.statutAvant) a.statutAvant = s.statutAvant; else delete a.statutAvant;
+      a.dernierDepart = s.dernierDepart; if (s.retour) a.retour = s.retour; else delete a.retour;
+      a.grade = s.grade; putAgent(a);
+    });
+    U.crees.forEach(id => { S.agents = S.agents.filter(a => a.id !== id); delAgent(id); });
+    S.capUndo = null;
+    toast('Mise à jour annulée : tout est revenu comme avant.');
+  }
+
+  function viewCaptures() {
+    const C = S.cap || (S.cap = capNouveau());
+    const ro = S.readOnly ? 'disabled' : '';
+    let html = `<h2>Mise à jour par captures</h2>
+      <section class="note"><ol class="howto">
+        <li>Dans <b>Photos</b>, ouvre la capture de la liste de garde.</li>
+        <li>Touche l'icône <b>Texte en direct</b> en bas à droite, puis <b>Copier tout</b>.</li>
+        <li>Reviens ici et colle le texte dans le cadre ci-dessous : il est lu tout de suite.</li>
+        <li>Fais pareil pour chaque capture si la liste est longue, puis vérifie et applique.</li>
+      </ol></section>`;
+    if (S.capUndo) html += `<div class="note info"><div class="row between"><span>Dernière mise à jour par captures appliquée.</span>${confirmBtn('cap-undo', 'Annuler cette mise à jour', "Confirmer l'annulation", 'btn ghost')}</div></div>`;
+    html += `<div class="fgroup">
+        <label class="flabel" for="cap-txt">Texte de la capture ${C.pastes ? C.pastes + 1 : 1}</label>
+        <textarea id="cap-txt" class="xfer cap" data-k="captxt" placeholder="Touche ici puis « Coller »" ${ro}></textarea>
+        <div class="row"><button type="button" class="btn ghost" data-act="cap-lire" ${ro}>Lire ce texte</button>
+          ${C.pastes ? `<button type="button" class="linkbtn" data-act="cap-reset">Tout effacer et recommencer</button>` : ''}</div>
+        ${C.err ? `<p class="err" role="alert">${esc(C.err)}</p>` : ''}
+      </div>`;
+    if (!C.lus.size) return html;
+    const P = capPlan(), n = capNbChangements(P);
+    const sTxt = s => s ? statutTxt(s) : '?';
+    const changes = P.lignes.filter(r => r.chStatut || r.chDate || r.chGrade);
+    const inchanges = P.lignes.filter(r => !(r.chStatut || r.chDate || r.chGrade));
+    html += `<h2 style="font-size:18px">À vérifier · ${C.lus.size} agent${C.lus.size > 1 ? 's' : ''} lu${C.lus.size > 1 ? 's' : ''} sur ${C.pastes} capture${C.pastes > 1 ? 's' : ''}</h2>`;
+    if (changes.length) html += `<ul class="list">${changes.map(r => `<li class="card cap-row">
+        <div class="cap-name"><b>${nomHtml(r.a)}</b><span class="muted small">${esc(r.a.grade || '?')}</span></div>
+        ${r.chStatut ? `<div class="cap-ch"><span class="flabel">Statut</span><span>${esc(sTxt(r.a.statut))} → <b>${esc(sTxt(r.statut))}</b></span></div>` : ''}
+        ${r.chDate ? `<div class="cap-ch"><span class="flabel">Départ</span><span class="mono">${esc(fmtSec(r.a.dernierDepart))} → <b>${esc(fmtSec(r.l.date))}</b></span></div>` : ''}
+        ${r.chGrade ? `<label class="cap-ch"><span class="flabel">Grade</span><span><input type="checkbox" id="capg-${esc(r.a.id)}" data-k="capopt" data-f="grade" data-id="${esc(r.a.id)}" ${S.cap.noGrade.has(r.a.id) ? '' : 'checked'}> ${esc(r.a.grade || '?')} → <b>${esc(r.l.grade)}</b></span></label>` : ''}
+        ${r.sansDate ? `<p class="hint w-warn" style="margin:0">Date non lue : dernier départ inchangé.</p>` : ''}
+        ${r.sansSection ? `<p class="hint w-warn" style="margin:0">Rubrique non lue : statut inchangé.</p>` : ''}
+      </li>`).join('')}</ul>`;
+    if (inchanges.length) html += `<p class="hint" style="margin:0">Déjà à jour : ${inchanges.map(r => esc(r.a.nom)).join(', ')}.</p>`;
+    if (P.inconnus.length) html += `<div class="group-title">Inconnus de l'outil · ${P.inconnus.length}</div><ul class="list">${P.inconnus.map(l => { const k = normNom(l.nom); return `<li class="card cap-row">
+        <label class="cap-ch"><input type="checkbox" id="capc-${k}" data-k="capopt" data-f="create" data-id="${esc(k)}" ${S.cap.noCreate.has(k) ? '' : 'checked'}>
+        <span>Créer <b>${esc(l.nom)}</b> · ${esc(l.grade)} · ${esc(sTxt(l.statut))} · départ ${esc(l.date ? fmtSec(l.date) : 'non lu')}</span></label>
+        <p class="hint" style="margin:0">Si c'est un agent déjà enregistré sous un autre nom, décoche et corrige son nom dans sa fiche.</p></li>`; }).join('')}</ul>`;
+    if (P.absents.length) html += `<div class="note"><label class="cap-ch"><input type="checkbox" id="cap-abs" data-k="capopt" data-f="absents" ${S.cap.absents ? 'checked' : ''}>
+        <span>Passer <b>Absent</b> les ${P.absents.length} agent${P.absents.length > 1 ? 's' : ''} qui ne sont pas sur les captures</span></label>
+        <p class="hint" style="margin:0">${P.absents.map(a => esc(a.nom)).join(', ')}. Décoche si tu n'as capturé qu'une partie de la liste.</p></div>`;
+    html += `<div class="row">${n ? confirmBtn('cap-apply', `Appliquer ${n} changement${n > 1 ? 's' : ''}`, 'Confirmer') : '<span class="muted">Rien à changer : tout est déjà à jour.</span>'}
+      <button type="button" class="linkbtn" data-act="cap-reset">Tout effacer</button></div>`;
+    return html;
+  }
+
   function viewEngins() {
     let html = `<div class="row between"><h2>Engins du centre</h2>${S.draftEngin ? '' : `<button class="btn" data-act="new-engin" ${S.readOnly ? 'disabled' : ''}>Ajouter un engin</button>`}</div>`;
     if (S.draftEngin) html += enginDraftCard();
@@ -1260,6 +1433,8 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     else if (kind === 'del-agent') { S.agents = S.agents.filter(a => a.id !== arg); S.open.delete(arg); delAgent(arg); toast('Agent supprimé.'); }
     else if (kind === 'del-engin') { S.engins = S.engins.filter(e => e.id !== arg); S.sel.delete(arg); S.open.delete(arg); delEngin(arg); toast('Engin supprimé.'); }
     else if (kind === 'import') importData();
+    else if (kind === 'cap-apply') capAppliquer();
+    else if (kind === 'cap-undo') capAnnuler();
     else if (kind === 'equipe-astreinte') {
       let n = 0;
       S.agents.forEach(a => { if (a.equipe === arg && a.statut !== 'inter' && a.statut !== 'astreinte') { a.statut = 'astreinte'; putAgent(a); n++; } });
@@ -1404,6 +1579,8 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
       case 'quick-save': quickSave(id); break;
       case 'bulk-open': S.bulk = { val: '', rval: '', sel: new Set(), err: '', all: false }; S.draftAgent = null; window.scrollTo({ top: 0 }); break;
       case 'bulk-close': S.bulk = null; break;
+      case 'cap-lire': { const el = document.getElementById('cap-txt'); if (el && el.value.trim()) capAjouter(el.value); else if (S.cap) S.cap.err = 'Colle d\'abord le texte de la capture dans le cadre.'; break; }
+      case 'cap-reset': S.cap = capNouveau(); break;
       case 'export': {
         const out = exportText(); S.transfer = { out };
         const done = () => { S.transfer = { out, copied: true }; render(); };
@@ -1488,7 +1665,18 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     if (t.dataset && (t.dataset.k === 'quick' || t.dataset.k === 'quickr') && ev.key === 'Enter') { ev.preventDefault(); quickSave(t.dataset.id); S.dirty = false; t.blur(); render(); }
   });
 
+  // Coller dans le cadre des captures : lecture immédiate
+  $view.addEventListener('paste', ev => {
+    const t = ev.target; if (!t || t.id !== 'cap-txt') return;
+    setTimeout(() => { if (t.value.trim()) { capAjouter(t.value); S.dirty = false; render(); } }, 0);
+  });
   $view.addEventListener('change', ev => {
+    if (ev.target.dataset && ev.target.dataset.k === 'capopt' && S.cap) {
+      const t = ev.target, f = t.dataset.f;
+      if (f === 'absents') S.cap.absents = t.checked;
+      else { const set = f === 'grade' ? S.cap.noGrade : S.cap.noCreate; t.checked ? set.delete(t.dataset.id) : set.add(t.dataset.id); }
+      S.dirty = false; render(); return;
+    }
     if (ev.target.dataset && ev.target.dataset.k === 'importfile') { onFileChosen(ev.target); return; }
     const t = ev.target, k = t.dataset.k, f = t.dataset.f; if (!k || !f) return;
     const o = target(k, t.dataset.id); if (!o) return;
