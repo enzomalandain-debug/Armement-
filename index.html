@@ -100,6 +100,7 @@ main { display: grid; gap: 18px; padding-top: 18px; }
 .ticket-head .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .ticket-note { margin: 0; padding: 8px 14px; font-size: 12px; line-height: 1.45; color: var(--warn); background: var(--warn-soft); border-bottom: 1px dashed var(--line); }
 .ticket-note.crit { color: var(--crit); background: var(--crit-soft); }
+.ticket-note.info { color: var(--accent); background: var(--accent-soft); }
 .ticket-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px 12px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--muted); }
 .poste { border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
 .poste:last-of-type { border-bottom: 0; }
@@ -416,6 +417,36 @@ function maxMatching(slots, agents, eligFn) {
 //    l'engin a une composition dégradée (FPT à 4 avec un SGT chef d'agrès…),
 //    on arme la composition dégradée.
 // 4. Départ simultané : FPT armé en premier, les autres engins avec les suivants.
+//    La console cherche à faire partir le plus d'engins complets : on retient d'abord
+//    le FPT s'il peut être complet, puis chaque engin suivant s'il peut aussi être
+//    complet en même temps. Un agent n'est pris que si ces engins retenus peuvent
+//    encore tous partir complets (ex. un SGT est gardé pour le CA du VSAV et un CPL
+//    devient chef d'équipe au FPT). Sinon, FPT complet d'abord et le VSAV ne part pas.
+
+// Tous les postes peuvent-ils être tenus ? Les agents engagés restent sur leur engin.
+function couvrable(slots, engages, libres) {
+  const left = engages.map(e => ({ a: e.agent, veh: e.veh })).concat(libres.map(a => ({ a, veh: null })));
+  const match = new Array(slots.length).fill(-1);
+  const ok = (L, s) => (L.veh === null || L.veh === s.veh) && ineligibility(L.a, s.role, s.veh) === null;
+  function aug(li, seen) {
+    for (let si = 0; si < slots.length; si++) {
+      if (seen[si] || !ok(left[li], slots[si])) continue;
+      seen[si] = true;
+      if (match[si] < 0 || aug(match[si], seen)) { match[si] = li; return true; }
+    }
+    return false;
+  }
+  let n = 0;
+  for (let li = 0; li < left.length; li++) {
+    if (aug(li, new Array(slots.length).fill(false))) n++;
+    else if (li < engages.length) return false;
+    if (n === slots.length && li >= engages.length - 1) return true;
+  }
+  return n === slots.length;
+}
+const postesDe = vehs => vehs.flatMap(v => (v.roles || []).map(role => ({ role, veh: v })));
+const art = nom => (/^[aeiouyhéèêâ]/i.test(nom) ? "l'" : 'le ') + nom;
+const listeNoms = n => n.length > 1 ? n.slice(0, -1).join(', ') + ' et ' + n[n.length - 1] : n[0];
 
 const PLACEMENT_ORDER = r => r.type === 'CA' ? 0 : r.type === 'COND' ? 1 : (rank(r.gradeMin || 'SAP2') > 0 ? 2 : 3);
 
@@ -427,10 +458,34 @@ function premierManque(r) {
   return p ? `${p.role.label} : ${(f.charAt(0).toLowerCase() + f.slice(1)).replace(/^aucun agent disponible ne peut tenir ce poste/, 'aucun agent disponible')}` : '';
 }
 
-function armer(vehiclesIn, agentsIn) {
+// Règle du centre : pour un VSAV, si un seul agent disponible peut prendre le CA du FPT (ADJ+),
+// la console le laisse au centre pour garder le FPT, dès qu'un autre agent peut être CA du VSAV.
+function agentsCaFpt(fpt, pool, usedBy) {
+  const roleCA = (fpt.roles || []).find(r => r.type === 'CA');
+  return roleCA ? pool.filter(a => !usedBy.has(a.id) && ineligibility(a, roleCA, fpt) === null) : [];
+}
+
+function armer(vehiclesIn, agentsIn, tousEngins) {
   const pool = sortByPriority(agentsIn.filter(isAvailable));
+  const fpt = (tousEngins || vehiclesIn).find(v => v.type === 'FPT');
+  const fptDansLeDepart = fpt && vehiclesIn.some(v => v === fpt || (v.id && v.id === fpt.id));
   const vehicles = [...vehiclesIn].sort((a, b) => (a.type === 'FPT' ? 0 : 1) - (b.type === 'FPT' ? 0 : 1));
   const usedBy = new Map(); // agentId -> nom de l'engin
+
+  // Engins qui peuvent partir complets ensemble, FPT d'abord puis dans l'ordre
+  const retenus = [];
+  if (vehicles.length > 1) for (const v of vehicles) if (couvrable(postesDe([...retenus, v]), [], pool)) retenus.push(v);
+  const gardePour = (veh, k) => {
+    const apres = vehicles.slice(k + 1).filter(v => retenus.includes(v));
+    if (!apres.length) return null;
+    const moiAussi = retenus.includes(veh);
+    const fn = (crew, a, roles) => couvrable(
+      postesDe(apres).concat(moiAussi ? roles.map(role => ({ role, veh })) : []),
+      moiAussi ? crew.concat(a).map(x => ({ agent: x, veh })) : [],
+      pool.filter(b => b !== a && !crew.includes(b) && !usedBy.has(b.id)));
+    fn.pour = listeNoms(apres.map(v => art(v.nom)));
+    return fn;
+  };
 
   const globalFlags = [];
   const unknownGrades = pool.filter(a => rank(gradeElig(a)) < 0).map(a => a.nom);
@@ -438,11 +493,29 @@ function armer(vehiclesIn, agentsIn) {
   const noDate = pool.filter(a => !a.dernierDepart).map(a => a.nom);
   if (noDate.length) globalFlags.push(`Dernier départ non renseigné (considéré comme le plus ancien) : ${noDate.join(', ')}`);
 
-  const result = vehicles.map(veh => {
-    let r = armerEngin(veh, veh.roles || [], pool, usedBy);
+  const result = vehicles.map((veh, k) => {
+    const garde = gardePour(veh, k);
+    let r = armerEngin(veh, veh.roles || [], pool, usedBy, garde);
+    if (veh.type === 'VSAV' && fpt && !fptDansLeDepart) {
+      const cands = agentsCaFpt(fpt, pool, usedBy);
+      const seul = cands.length === 1 ? cands[0] : null;
+      if (seul && r.crew.includes(seul)) {
+        const g = gradeElig(seul) !== '?' ? gradeElig(seul) + ' ' : '';
+        const sans = armerEngin(veh, veh.roles || [], pool.filter(a => a !== seul), usedBy, garde);
+        if (!sans.postes.some(p => p.vide)) {
+          const motif = `laissé au centre pour assurer le ${fpt.nom} (seul CA ${fpt.nom} disponible)`;
+          const i = Math.min(pool.indexOf(seul), sans.selection.length);
+          sans.selection.splice(i, 0, { nom: seul.nom, statut: seul.statut, dernierDepart: seul.dernierDepart, retour: seul.retour ?? null, ok: false, motif });
+          sans.reserveFpt = `${g}${seul.nom} reste au centre pour assurer le ${fpt.nom} : seul agent disponible pouvant en être chef d'agrès, et un autre agent peut prendre le CA du ${veh.nom}`;
+          r = sans;
+        } else {
+          r.reserveFptImpossible = `${g}${seul.nom} est le seul pouvant être CA du ${fpt.nom}, mais le ${veh.nom} ne peut pas partir sans lui : il part et le ${fpt.nom} perd son CA`;
+        }
+      }
+    }
     const deg = Array.isArray(veh.degrade) && veh.degrade.length ? veh.degrade : null;
     if (r.postes.some(p => p.vide) && deg) {
-      const d = armerEngin(veh, deg, pool, usedBy);
+      const d = armerEngin(veh, deg, pool, usedBy, garde);
       if (!d.postes.some(p => p.vide)) {
         d.degrade = true;
         d.pourquoiDegrade = `Composition complète (${veh.roles.length}) impossible : ${premierManque(r)}`;
@@ -451,24 +524,31 @@ function armer(vehiclesIn, agentsIn) {
         r.degradeImpossible = `Départ dégradé à ${deg.length} impossible aussi : ${premierManque(d)}`;
       }
     }
+    if (retenus.length && !retenus.includes(veh) && couvrable(postesDe([veh]), [], pool)) {
+      const n = retenus.map(v => art(v.nom));
+      r.priorite = `Pas assez de personnel pour faire partir ${listeNoms(n)} et ${art(veh.nom)} complets en même temps : ${listeNoms(n)} ${n.length > 1 ? 'passent' : 'passe'} en priorité`;
+    }
     r.crew.forEach(a => usedBy.set(a.id, veh.nom));
     return r;
   });
   return { result, globalFlags };
 }
 
-function armerEngin(veh, roles, pool, usedBy) {
+function armerEngin(veh, roles, pool, usedBy, garde) {
   const slots = roles.map((role, ri) => ({ role, ri }));
   const elig = (a, s) => ineligibility(a, s.role, veh) === null;
   const fullFit = (crew, sl) => maxMatching(sl, crew, elig) === crew.length;
 
   // 1. Constitution : agents pris dans l'ordre du tour de départ
-  const crew = [], motifs = new Map();
+  const crew = [], motifs = new Map(), gardes = [];
   for (const a of pool) {
     if (crew.length === slots.length) break;
     if (usedBy.has(a.id)) { motifs.set(a.id, `déjà engagé sur ${usedBy.get(a.id)}`); continue; }
     if (!slots.some(s => elig(a, s))) { motifs.set(a.id, [...new Set(slots.map(s => ineligibility(a, s.role, veh)))].join(' ; ')); continue; }
-    if (fullFit([...crew, a], slots)) { crew.push(a); continue; }
+    if (fullFit([...crew, a], slots)) {
+      if (garde && !garde(crew, a, roles)) { motifs.set(a.id, `gardé pour que ${garde.pour} parte${/ et /.test(garde.pour) ? 'nt' : ''} complet${/ et /.test(garde.pour) ? 's' : ''}`); gardes.push(a); continue; }
+      crew.push(a); continue;
+    }
     const libres = slots.filter(s => fullFit(crew, slots.filter(x => x !== s)));
     motifs.set(a.id, 'postes encore libres : ' + libres.map(s => `${s.role.label} (${ineligibility(a, s.role, veh) || 'déjà couvert'})`).join(', '));
   }
@@ -485,7 +565,7 @@ function armerEngin(veh, roles, pool, usedBy) {
   for (const c of crew) {
     for (const b of pool) {
       if (b === c || crew.includes(b) || usedBy.has(b.id) || !sameRank(b, c)) continue;
-      if (fullFit(crew.filter(x => x !== c).concat(b), slots)) { ties.set(c.id, b); break; }
+      if (fullFit(crew.filter(x => x !== c).concat(b), slots) && (!garde || garde(crew.filter(x => x !== c), b, roles))) { ties.set(c.id, b); break; }
     }
   }
   const postes = roles.map(role => ({ role, agent: null, steps: [], flags: [], notes: [] }));
@@ -543,7 +623,8 @@ function armerEngin(veh, roles, pool, usedBy) {
     }
   });
 
-  return { veh, postes, crew, selection, degrade: false };
+  const gardesNoms = gardes.filter(a => !crew.includes(a)).map(a => a.nom);
+  return { veh, postes, crew, selection, degrade: false, gardes: gardesNoms, gardesPour: garde ? garde.pour : '' };
 }
 
 function fmt(iso) {
@@ -785,7 +866,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     const stamp = fmtDate(new Date().toISOString());
     if (S.mode === 'prevision') {
       html += `<div class="tickets">${S.engins.map(e => {
-        const { result } = armer([e], S.agents);
+        const { result } = armer([e], S.agents, S.engins);
         return ticket(result[0], stamp, confirmBtn('valider:' + e.id, 'Valider ce départ', 'Confirmer le départ'));
       }).join('')}</div>`;
     } else {
@@ -794,7 +875,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
       if (!vehs.length) {
         html += `<div class="card empty"><p class="muted">Choisis les engins qui partent ensemble, par exemple FPT et VSAV.</p></div>`;
       } else {
-        const { result } = armer(vehs, S.agents);
+        const { result } = armer(vehs, S.agents, S.engins);
         html += `<div class="tickets">${result.map(r => ticket(r, stamp, '')).join('')}</div>`;
         html += `<div class="row">${confirmBtn('valider:' + vehs.map(v => v.id).join(','), 'Valider le départ simultané', 'Confirmer le départ')}</div>`;
       }
@@ -851,6 +932,10 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
       <div class="ticket-head"><h3>${esc(r.veh.nom)}</h3><div class="meta">${verif}${statusEgal}${status}</div></div>
       ${r.degrade ? `<p class="ticket-note">${esc(r.pourquoiDegrade)}.</p>` : ''}
       ${r.degradeImpossible ? `<p class="ticket-note crit">${esc(r.degradeImpossible)}.</p>` : ''}
+      ${r.reserveFpt ? `<p class="ticket-note info">${esc(r.reserveFpt)}.</p>` : ''}
+      ${r.gardes && r.gardes.length ? `<p class="ticket-note info">${esc(r.gardes.join(', '))} ${r.gardes.length > 1 ? 'gardés' : 'gardé'} pour que ${esc(r.gardesPour)} ${/ et /.test(r.gardesPour) ? 'partent complets' : 'parte complet'}.</p>` : ''}
+      ${r.priorite ? `<p class="ticket-note">${esc(r.priorite)}.</p>` : ''}
+      ${r.reserveFptImpossible ? `<p class="ticket-note">${esc(r.reserveFptImpossible)}.</p>` : ''}
       ${postes || '<p class="muted" style="padding:12px 14px;margin:0">Aucun poste paramétré pour cet engin.</p>'}
       ${crewBlock(r)}
       <div class="ticket-foot"><span>Calcul ${esc(stamp)} · ${r.postes.filter(p => p.agent).length}/${r.postes.length} postes</span>${actions}</div>
@@ -1527,7 +1612,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
   function valider(ids) {
     const vehs = ids.map(findE).filter(Boolean);
     if (!vehs.length) return;
-    const { result } = armer(vehs, S.agents);
+    const { result } = armer(vehs, S.agents, S.engins);
     const now = new Date().toISOString();
     const partis = new Set();
     result.forEach(r => r.postes.forEach(p => { if (p.agent) partis.add(p.agent.id); }));
