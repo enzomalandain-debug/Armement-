@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#1f3a5f">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#14826b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Armement">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>Armement des engins</title>
@@ -39,22 +39,6 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   --f-display: "Saira Condensed", "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
   --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0e1216; --paper: #161b21; --ink: #e5e9ee; --muted: #97a1ad; --line: #2b333d;
-    --accent: #9dbbe6; --on-accent: #0e1216; --accent-soft: #1d2a3b;
-    --ok: #63c793; --ok-soft: #14291e; --warn: #f0aa4c; --warn-soft: #2f2412;
-    --crit: #ff7a70; --crit-soft: #351a18;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0e1216; --paper: #161b21; --ink: #e5e9ee; --muted: #97a1ad; --line: #2b333d;
-  --accent: #9dbbe6; --on-accent: #0e1216; --accent-soft: #1d2a3b;
-  --ok: #63c793; --ok-soft: #14291e; --warn: #f0aa4c; --warn-soft: #2f2412;
-  --crit: #ff7a70; --crit-soft: #351a18;
-  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--f-body); }
@@ -228,19 +212,97 @@ legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 6px; font-size: 14px; max-width: calc(100% - 32px); z-index: 20; }
 footer { font-size: 12px; color: var(--muted); padding-top: 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---------- Visuel console : barre verte, cartes blanches arrondies, onglets en bas ---------- */
+:root {
+  --bg: #eef2f1; --paper: #ffffff; --ink: #23282c; --muted: #868e94; --line: #dde4e2;
+  --accent: #14826b; --on-accent: #ffffff; --accent-soft: #e2f2ed;
+  --go: #13a33d; --tab-on: #f3e200; --badge: #2b2f33;
+  --ok: #128a3a; --ok-soft: #e1f4e7; --warn: #b86e00; --warn-soft: #fcefd8; --crit: #cf3128; --crit-soft: #fbe3e1;
+  --f-display: -apple-system, "SF Pro Display", "Segoe UI", Roboto, system-ui, sans-serif;
+  --f-body: -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  --f-mono: -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  color-scheme: light;
+}
+body { background: var(--bg); color: var(--ink); font-size: 15px; }
+body::before { background: var(--accent); }
+.app { padding-block: 0 calc(96px + env(safe-area-inset-bottom, 0px)); }
+.top { background: var(--accent); color: #fff; border: 0; padding-block: 12px 14px; text-align: center; border-image: linear-gradient(var(--accent), var(--accent)) fill 0 / 0 / 0 100vmax; }
+.bar-title { display: grid; gap: 3px; justify-items: center; }
+.bar-title b { font: 700 21px/1.15 var(--f-display); }
+.bar-title span { font: 700 17px/1.15 var(--f-display); letter-spacing: .03em; text-transform: uppercase; }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--accent);
+  padding: 8px max(8px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); }
+.tabbar button { background: none; border: 0; color: #fff; display: grid; justify-items: center; align-content: center; gap: 4px; font: 500 12.5px/1 var(--f-body); min-height: 54px; }
+.tabbar svg { width: 27px; height: 27px; }
+.tabbar button[aria-selected="true"] { color: var(--tab-on); }
+.tabbar button:focus-visible { outline: 2px solid #fff; outline-offset: -4px; border-radius: 10px; }
+main { gap: 16px; padding-top: 16px; }
+h2 { font: 700 22px/1.15 var(--f-display); text-transform: none; letter-spacing: 0; }
+.muted, .hint { color: var(--muted); }
+.counts { font: 500 14px/1.3 var(--f-body); }
+.note { border-radius: 16px; }
+.btn { border-radius: 14px; min-height: 44px; font: 700 15px/1.1 var(--f-body); background: var(--go); border-color: var(--go); }
+.btn.ghost { background: var(--paper); color: var(--accent); border-color: var(--accent); }
+.btn.danger { background: var(--paper); }
+.btn.armed { background: var(--crit); border-color: var(--crit); }
+.seg { border-radius: 14px; border-color: var(--line); }
+.seg button { font: 700 15px/1 var(--f-body); text-transform: none; letter-spacing: 0; }
+.seg.small { border-radius: 12px; }
+.seg.small button { font: 600 13px/1 var(--f-body); min-height: 38px; }
+.seg.small button[data-v="astreinte"][aria-pressed="true"] { background: var(--go); }
+.seg.small button[data-v="dispo"][aria-pressed="true"] { background: var(--accent); }
+.seg.small button[data-v="reserve"][aria-pressed="true"] { background: #56656f; }
+.seg.small button[data-v="indispo"][aria-pressed="true"] { background: #cfd7d9; color: var(--ink); }
+.chip { border-radius: 999px; font-family: var(--f-body); }
+.pill { border-radius: 999px; font-family: var(--f-body); letter-spacing: .02em; }
+/* Listes : cadre vert arrondi, rubrique en bandeau */
+.list { gap: 0; background: var(--paper); border: 2px solid var(--accent); border-radius: 24px; overflow: hidden; }
+.list > li.card { border: 0; border-radius: 0; border-bottom: 1px solid var(--line); }
+.list > li.card:last-child { border-bottom: 0; }
+.group-title { background: var(--accent); color: #fff; font: 700 18px/1 var(--f-display); letter-spacing: 0; text-transform: none; text-align: center; padding: 13px 16px; border-radius: 24px 24px 0 0; margin: 8px 0 -16px; }
+.group-title + .list { border-top: 0; border-radius: 0 0 24px 24px; }
+.agent-main { grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 6px 12px; padding: 12px 14px; }
+.agent-main.no-rank { grid-template-columns: auto minmax(0, 1fr) auto; }
+.agent-main .agent-ctl, .agent-main.no-rank .agent-ctl { grid-column: 1 / -1; }
+.rank { font: 600 12px/1 var(--f-body); color: var(--muted); min-width: 2ch; }
+.badge svg { display: block; width: 50px; height: 50px; }
+.agent-name { gap: 3px; }
+.agent-name b { font: 700 17px/1.2 var(--f-display); color: var(--ink); }
+.agent-name span { font: 400 13.5px/1.3 var(--f-body); color: var(--muted); }
+.agent-name span.warn { color: var(--warn); }
+.fiche-btn { border-radius: 12px; min-height: 38px; padding: 0 10px; border-color: var(--line); background: var(--paper); font: 600 13px/1 var(--f-body); }
+.quick { background: var(--accent-soft); border-radius: 0; }
+.qd { border-radius: 12px; font-family: var(--f-body); }
+label.f input, label.f select, .role select, .role input, .xfer { border-radius: 12px; }
+/* Tickets de départ */
+.ticket { border: 2px solid var(--accent); border-radius: 24px; overflow: hidden; font-family: var(--f-body); }
+.ticket-head { background: var(--accent); color: #fff; border: 0; padding: 12px 16px; }
+.ticket-head h3 { color: #fff; font: 700 21px/1 var(--f-display); text-transform: none; letter-spacing: 0; }
+.ticket-head .pill { background: #fff; }
+.ticket-note { border-bottom: 1px solid var(--line); }
+.poste { border-bottom: 1px solid var(--line); }
+.poste summary { grid-template-columns: auto minmax(0, 1fr) auto; padding: 12px 16px; align-items: center; }
+.poste .badge svg { width: 44px; height: 44px; }
+.poste .lbl { display: block; font: 600 12px/1.2 var(--f-body); letter-spacing: .03em; color: var(--muted); }
+.poste .who { font: 700 16.5px/1.3 var(--f-display); }
+.poste .who small { font: 400 13.5px/1.35 var(--f-body); }
+.poste .flags { grid-column: 2 / -1; }
+.why { border-radius: 14px; font-family: var(--f-body); }
+.ticket-foot { border-top: 1px solid var(--line); font-family: var(--f-body); }
+.crew { border-top: 1px solid var(--line); }
+.toast { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); border-radius: 14px; }
+footer { padding-bottom: 8px; }
 </style>
 
 <div class="app">
   <header class="top">
-    <div>
-      <div class="eyebrow">CIS Montivilliers · SDIS 76</div>
-      <h1>Armement des engins</h1>
-    </div>
-    <nav class="seg" role="tablist" aria-label="Sections">
-      <button role="tab" data-tab="depart" aria-selected="true">Départ</button>
-      <button role="tab" data-tab="effectif" aria-selected="false">Effectif</button>
-      <button role="tab" data-tab="engins" aria-selected="false">Engins</button>
-      <button role="tab" data-tab="captures" aria-selected="false">Captures</button>
+    <div class="bar-title"><b>Armement des engins</b><span>Montivilliers</span></div>
+    <nav class="tabbar" role="tablist" aria-label="Sections">
+      <button role="tab" data-tab="depart" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 16.5V8.5h10.5v8M13 11h4.2l3.3 3.3v2.2H13"/><path d="M4.5 8.5V6.5h6v2M6.5 6.5V4.5"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/></svg><span>Départ</span></button>
+      <button role="tab" data-tab="effectif" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19.5c.4-3.4 2.9-5.6 6-5.6s5.6 2.2 6 5.6"/><circle cx="17" cy="9" r="2.4"/><path d="M15.8 13.7c2.6-.3 4.8 1.6 5.2 4.6"/></svg><span>Effectif</span></button>
+      <button role="tab" data-tab="engins" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/></svg><span>Engins</span></button>
+      <button role="tab" data-tab="captures" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6.5" width="18" height="13" rx="2.5"/><circle cx="12" cy="13" r="3.6"/><path d="M8.5 6.5 10 4.3h4l1.5 2.2"/></svg><span>Captures</span></button>
     </nav>
   </header>
   <div id="banner" class="note info" hidden style="margin-top:14px"></div>
@@ -575,6 +637,21 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
   function prenoms(a) { const nf = nomFamille(a); return String(a.nom || '').split(/\s+/).filter(w => !nf.split(' ').includes(w)).join(' '); }
   const byFamille = (a, b) => nomFamille(a).localeCompare(nomFamille(b), 'fr', { sensitivity: 'base' }) || prenoms(a).localeCompare(prenoms(b), 'fr');
   function nomHtml(a) { return `<span class="nf">${esc(nomFamille(a).toLocaleUpperCase('fr'))}</span> ${esc(prenoms(a))}`; }
+  // Insigne de grade dessiné : rond sombre, galons rouges (SAP1, CPL, CCH), blancs (SGT, SCH), barrettes (ADJ, ADC, officiers)
+  function gradeSvg(g, size) {
+    const R = '#e8352b', W = '#f3f3f0', OR = '#f0b54a';
+    const diag = (n, fill, line) => {
+      const w = 6, gap = 2.6, tot = n * w + (n - 1) * gap, x0 = 20 - tot / 2;
+      return Array.from({ length: n }, (_, i) => { const x = x0 + i * (w + gap);
+        return `<polygon points="${x + 4},9.5 ${x + 4 + w},9.5 ${x + w - 4},30.5 ${x - 4},30.5" fill="${fill}"${line ? ` stroke="${line}" stroke-width="1.3"` : ''}/>`; }).join('');
+    };
+    const barre = (fill, n = 1) => Array.from({ length: n }, (_, i) => { const y = 20 - (n * 7 + (n - 1) * 3) / 2 + i * 10;
+      return `<rect x="7" y="${y}" width="26" height="7" rx="1.5" fill="${fill}"/><rect x="7" y="${y + 2.6}" width="26" height="1.8" fill="${R}"/>`; }).join('');
+    const motifs = { SAP2: '', SAP1: diag(1, R), CPL: diag(2, R), CCH: diag(3, R), SGT: diag(1, W, R), SCH: diag(3, W, R),
+      ADJ: barre(OR), ADC: barre(W), LTN: barre(W, 1), CPT: barre(W, 2), CDT: barre(W, 3) };
+    const inner = g in motifs ? motifs[g] : `<text x="20" y="24.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="system-ui, sans-serif">?</text>`;
+    return `<svg viewBox="0 0 40 40" width="${size || 54}" height="${size || 54}" role="img" aria-label="${esc(g && g !== '?' ? g : 'grade inconnu')}"><circle cx="20" cy="20" r="20" fill="#2b2f33"/>${inner}</svg>`;
+  }
   function retourValide(a) { return !!a.retour && (!a.dernierDepart || Date.parse(a.retour) >= Date.parse(a.dernierDepart)); }
   function retourDuDepart(iso) { const x = S.agents.find(o => o.dernierDepart === iso && retourValide(o)); return x ? x.retour : null; }
   function toLocalInput(iso) { if (!iso) return ''; const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
@@ -764,8 +841,8 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
         ${(p.notes || []).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
       </div>`;
       return `<details class="poste"><summary>
-          <span class="lbl">${esc(p.role.label)}</span>
-          <span class="who ${p.agent ? '' : 'empty'}">${p.agent ? esc(p.agent.nom) : 'Non pourvu'}${p.agent ? `<small>${esc(p.agent.grade && p.agent.grade !== '?' ? p.agent.grade : 'grade ?')} · dernier départ ${esc(fmtDate(p.agent.dernierDepart))}${retourValide(p.agent) ? ', retour ' + esc(fmtDate(p.agent.retour)) : ''}</small>` : ''}</span>
+          <span class="badge">${p.agent ? gradeSvg(p.agent.grade, 44) : gradeSvg('?', 44)}</span>
+          <span class="who ${p.agent ? '' : 'empty'}"><span class="lbl">${esc(p.role.label)}</span>${p.agent ? esc(p.agent.nom) : 'Non pourvu'}${p.agent ? `<small>${esc(p.agent.grade && p.agent.grade !== '?' ? p.agent.grade : 'grade ?')} · dernier départ ${esc(fmtDate(p.agent.dernierDepart))}${retourValide(p.agent) ? ', retour ' + esc(fmtDate(p.agent.retour)) : ''}</small>` : ''}</span>
           <span class="chev" aria-hidden="true">›</span>
           ${pills.length ? `<span class="flags">${pills.join('')}</span>` : ''}
         </summary>${why}</details>`;
@@ -1017,9 +1094,10 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     return `<li class="card">
       <div class="agent-main${rank === false ? ' no-rank' : ''}">
         ${rank === false ? '' : `<span class="rank">${rank ? pad(rank) : '·'}</span>`}
+        <span class="badge">${gradeSvg(a.grade)}</span>
         <button class="agent-name" data-act="quick" data-id="${esc(a.id)}" aria-expanded="${quick}" aria-label="Changer le dernier départ de ${esc(a.nom)}">
-          <b>${rank === false ? nomHtml(a) : esc(a.nom)}</b>
-          <span>${esc(a.grade && a.grade !== '?' ? a.grade : 'grade ?')} · ${esc(codTxt(a))}${restr ? ' · ' + esc(restr) : ''}</span>
+          <b>${a.grade && a.grade !== '?' ? esc(a.grade) + ' ' : ''}${rank === false ? nomHtml(a) : esc(a.nom)}</b>
+          <span>${esc(codTxt(a))}${restr ? ' · ' + esc(restr) : ''}</span>
           <span class="${a.dernierDepart ? '' : 'warn'}">Dernier départ : ${esc(fmtSec(a.dernierDepart))}${retourValide(a) ? ' · retour ' + esc(fmtSec(a.retour)) : ''}</span>
         </button>
         <button class="fiche-btn" data-act="toggle" data-id="${esc(a.id)}" aria-expanded="${open}">Fiche</button>
