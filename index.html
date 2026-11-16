@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>Armement des engins</title>
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <script>
 window.ARMEMENT_OFFLINE = true; // version vierge : aucune donnée dans ce fichier
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
@@ -258,8 +258,8 @@ const missionLabel = m => (MISSIONS.find(x => x[0] === m) || [m, m])[1];
 
 function gradeElig(a) { return a.gradeEq || a.grade || '?'; }
 
-// Tour de départ : astreinte, puis disponible
-const STATUT_RANG = { astreinte: 0, dispo: 1 };
+// Tour de départ : astreinte, puis disponible, puis réserve
+const STATUT_RANG = { astreinte: 0, dispo: 1, reserve: 2 };
 function isAvailable(a) { return a.statut in STATUT_RANG; }
 
 // Retourne null si éligible, sinon la raison (texte court)
@@ -570,7 +570,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
   function retourDuDepart(iso) { const x = S.agents.find(o => o.dernierDepart === iso && retourValide(o)); return x ? x.retour : null; }
   function toLocalInput(iso) { if (!iso) return ''; const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
   function codTxt(a) { return (a.cod && a.cod.length) ? 'COD ' + [...a.cod].sort((x, y) => x - y).join(' ') : 'aucun COD'; }
-  function statutTxt(s) { return { astreinte: 'astreinte', dispo: 'disponible', inter: 'en inter', indispo: 'indispo' }[s] || s; }
+  function statutTxt(s) { return { astreinte: 'astreinte', dispo: 'disponible', reserve: 'réserve', inter: 'en inter', indispo: 'indispo' }[s] || s; }
   function roleCond(r) { return r.type === 'COND' ? 'COD' + r.cod : (r.gradeMin && r.gradeMin !== 'SAP2' ? r.gradeMin + '+' : 'tout grade'); }
 
   /* ---------- Stockage ---------- */
@@ -658,9 +658,9 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
   }
 
   function counts() {
-    const c = { astreinte: 0, dispo: 0, inter: 0, indispo: 0 };
+    const c = { astreinte: 0, dispo: 0, reserve: 0, inter: 0, indispo: 0 };
     S.agents.forEach(a => { c[a.statut] = (c[a.statut] || 0) + 1; });
-    return `<div class="counts"><span><b>${c.astreinte}</b> astreinte</span><span><b>${c.dispo}</b> disponible${c.dispo > 1 ? 's' : ''}</span><span><b>${c.inter}</b> en inter</span><span><b>${c.indispo}</b> indispo</span></div>`;
+    return `<div class="counts"><span><b>${c.astreinte}</b> astreinte</span><span><b>${c.dispo}</b> disponible${c.dispo > 1 ? 's' : ''}</span><span><b>${c.reserve}</b> réserve</span><span><b>${c.inter}</b> en inter</span><span><b>${c.indispo}</b> indispo</span></div>`;
   }
 
   function confirmBtn(key, label, confirmLabel, cls = 'btn') {
@@ -746,6 +746,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
       if (p.flags.some(f => f.startsWith('Égalité'))) pills.push(`<span class="pill warn">Égalité</span>`);
       if (p.agent && !p.agent.dernierDepart) pills.push(`<span class="pill warn">Date inconnue</span>`);
       if (p.agent && p.agent.statut === 'astreinte') pills.push(`<span class="pill astr">Astreinte</span>`);
+      if (p.agent && p.agent.statut === 'reserve') pills.push(`<span class="pill neutral">Réserve</span>`);
       const why = `<div class="why">
         <div>Placé en ${p.ordre}<sup>${p.ordre === 1 ? 'er' : 'e'}</sup> sur ${r.postes.length} · ${p.nCandidats} membre${p.nCandidats > 1 ? 's' : ''} de l'équipage éligible${p.nCandidats > 1 ? 's' : ''} (${esc(roleCond(p.role))})</div>
         ${p.agent ? `<div>Retenu : <b>${esc(p.agent.nom)}</b> · ${esc(p.motif)}</div>` : ''}
@@ -822,10 +823,11 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     const B = S.bulk, n = B.sel.size;
     const groups = [
       ['Astreinte', S.agents.filter(a => a.statut === 'astreinte')],
+      ['Réserve', S.agents.filter(a => a.statut === 'reserve')],
       ['Disponible', S.agents.filter(a => a.statut === 'dispo')],
       ['En intervention', S.agents.filter(a => a.statut === 'inter')],
     ];
-    const autres = S.agents.filter(a => !['astreinte', 'dispo', 'inter'].includes(a.statut));
+    const autres = S.agents.filter(a => !['astreinte', 'dispo', 'reserve', 'inter'].includes(a.statut));
     if (B.all) groups.push(['Indisponibles', autres]);
     const chip = a => `<button type="button" class="chip sm when" data-act="bulk-toggle" data-id="${esc(a.id)}" aria-pressed="${B.sel.has(a.id)}">${esc(a.nom)}<small>${esc(a.dernierDepart ? fmtSec(a.dernierDepart) : 'pas de date')}${retourValide(a) ? ' · retour ' + esc(fmtSec(a.retour).slice(6)) : ''}</small></button>`;
     const recents = [...new Set(S.agents.map(a => a.dernierDepart).filter(Boolean))].sort((x, y) => Date.parse(y) - Date.parse(x)).slice(0, 3);
@@ -903,7 +905,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     }
     if (S.effView !== 'tour') return html + viewAppel();
     html += counts();
-    html += `<p class="muted small" style="margin:0">L'ordre ci-dessous est le tour de départ : astreinte, puis disponible ; à statut égal, le plus ancien départ (ou le premier rentré si l'heure de retour est renseignée). Touche un nom pour changer son dernier départ, « Fiche » pour le reste.</p>`;
+    html += `<p class="muted small" style="margin:0">L'ordre ci-dessous est le tour de départ : astreinte, puis disponible, puis réserve ; à statut égal, le plus ancien départ (ou le premier rentré si l'heure de retour est renseignée). Touche un nom pour changer son dernier départ, « Fiche » pour le reste.</p>`;
     if (avail.length) html += `<div class="group-title">Tour de départ</div><ul class="list">${avail.map((a, i) => agentRow(a, i + 1)).join('')}</ul>`;
     if (inter.length) html += `<div class="group-title">En intervention</div><ul class="list">${inter.map(a => agentRow(a)).join('')}</ul>`;
     if (indispo.length) html += `<div class="group-title">Indisponibles</div><ul class="list">${indispo.map(a => agentRow(a)).join('')}</ul>`;
@@ -915,8 +917,8 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     const membres = S.agents.filter(a => a.equipe === T).sort(byFamille);
     const autres = S.agents.filter(a => a.equipe !== T);
     const sansEquipe = S.agents.filter(a => !EQUIPES.includes(a.equipe)).sort(byFamille);
-    const renforts = autres.filter(a => ['astreinte', 'dispo', 'inter'].includes(a.statut)).sort(byFamille);
-    const c = { astreinte: 0, dispo: 0, inter: 0, indispo: 0 };
+    const renforts = autres.filter(a => ['astreinte', 'dispo', 'reserve', 'inter'].includes(a.statut)).sort(byFamille);
+    const c = { astreinte: 0, dispo: 0, reserve: 0, inter: 0, indispo: 0 };
     membres.forEach(a => { c[a.statut] = (c[a.statut] || 0) + 1; });
     let html = `<div class="appel-head">
       <span class="flabel">Équipe affichée</span>
@@ -940,7 +942,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     if (!membres.length) {
       html += `<div class="card empty"><p class="muted">Aucun agent n'est encore dans l'équipe ${T}. Ajoute un agent ou classe les agents existants.</p></div>`;
     } else {
-      html += `<div class="row between"><div class="counts"><span><b>${c.astreinte}</b> astreinte</span><span><b>${c.dispo}</b> disponible${c.dispo > 1 ? 's' : ''}</span><span><b>${c.inter}</b> en inter</span><span><b>${c.indispo}</b> absent${c.indispo > 1 ? 's' : ''}</span></div>
+      html += `<div class="row between"><div class="counts"><span><b>${c.astreinte}</b> astreinte</span><span><b>${c.dispo}</b> disponible${c.dispo > 1 ? 's' : ''}</span>${c.reserve ? `<span><b>${c.reserve}</b> réserve</span>` : ''}<span><b>${c.inter}</b> en inter</span><span><b>${c.indispo}</b> absent${c.indispo > 1 ? 's' : ''}</span></div>
         ${confirmBtn('equipe-astreinte:' + T, `Toute l'équipe ${T} d'astreinte`, 'Confirmer', 'btn ghost')}</div>
         <ul class="list">${membres.map(a => agentRow(a, false)).join('')}</ul>`;
     }
@@ -1000,7 +1002,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     const ctl = a.statut === 'inter'
       ? `<span class="pill astr">En inter depuis ${esc(fmtDate(a.dernierDepart))}</span><button class="btn ghost" data-act="retour" data-id="${esc(a.id)}" ${ro}>Retour</button>`
       : `<div class="seg small" role="group" aria-label="Statut de ${esc(a.nom)}">
-          ${[['astreinte', 'Astreinte'], ['dispo', 'Disponible'], ['indispo', rank === false ? 'Absent' : 'Indispo']].map(([v, l]) => `<button data-act="statut" data-id="${esc(a.id)}" data-v="${v}" aria-pressed="${a.statut === v}" ${ro}>${l}</button>`).join('')}
+          ${[['astreinte', 'Astreinte'], ['dispo', 'Disponible'], ['reserve', 'Réserve'], ['indispo', rank === false ? 'Absent' : 'Indispo']].map(([v, l]) => `<button data-act="statut" data-id="${esc(a.id)}" data-v="${v}" aria-pressed="${a.statut === v}" ${ro}>${l}</button>`).join('')}
         </div>`;
     const assign = opts.assign ? `<div class="chips assign" role="group" aria-label="Équipe de ${esc(a.nom)}">${EQUIPES.map(e => `<button type="button" class="chip sm" data-act="set-equipe" data-id="${esc(a.id)}" data-v="${e}" aria-pressed="${a.equipe === e}" ${ro}>${e}</button>`).join('')}</div>` : '';
     return `<li class="card">
@@ -1045,7 +1047,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
       <div class="fgroup"><span class="flabel">Contre-indications</span>${chips(k, id, 'ci', 'many', MISSIONS, v => ci.includes(v), 'ci')}
         <span class="hint">L'agent n'est jamais engagé sur un engin dont la mission est cochée ici.</span></div>
       <div class="fgroup"><span class="flabel">Restrictions</span>${chips(k, id, 'restr', 'bool', RESTR_OPTS, v => !!a[v])}</div>
-      ${k === 'draftAgent' ? `<div class="fgroup"><span class="flabel">Statut</span>${chips(k, id, 'statut', 'one', [['astreinte', 'Astreinte'], ['dispo', 'Disponible'], ['indispo', 'Indispo']], v => a.statut === v)}</div>` : ''}
+      ${k === 'draftAgent' ? `<div class="fgroup"><span class="flabel">Statut</span>${chips(k, id, 'statut', 'one', [['astreinte', 'Astreinte'], ['dispo', 'Disponible'], ['reserve', 'Réserve'], ['indispo', 'Indispo']], v => a.statut === v)}</div>` : ''}
       <div class="fields">
         <label class="f">Compté comme (éligibilité)<select id="${p}-gradeEq" data-k="${k}" data-id="${esc(id)}" data-f="gradeEq" ${ro}>${gradeOptions(a.gradeEq || '', false, 'Son grade')}</select></label>
         ${k === 'draftAgent' ? `<label class="f">Dernier départ (si connu)<input type="datetime-local" id="${p}-dd" data-k="${k}" data-id="${esc(id)}" data-f="dernierDepart" value="${esc(toLocalInput(a.dernierDepart))}"></label>` : ''}
@@ -1069,7 +1071,7 @@ if (typeof module !== 'undefined') module.exports = { armer, GRADES, MISSIONS, m
     if (!S.engins.length && !S.draftEngin) html += `<div class="card empty"><p class="muted">Aucun engin paramétré. Ajoute un engin à partir d'un modèle, puis ajuste ses postes.</p></div>`;
     else if (S.engins.length) html += `<ul class="list">${S.engins.map(enginRow).join('')}</ul>`;
     html += `<section class="note"><h2 style="font-size:18px">Règles appliquées</h2><ul class="rules">
-      <li>Tour de départ : astreinte (y compris DHCIS) avant disponible ; à statut égal, le plus ancien départ part en premier. Pour un départ à plusieurs engins, l'engin rentré en premier repart en premier : renseigne alors l'heure de retour, même approximative.</li>
+      <li>Tour de départ : astreinte (y compris DHCIS), puis disponible, puis réserve ; à statut égal, le plus ancien départ part en premier. Pour un départ à plusieurs engins, l'engin rentré en premier repart en premier : renseigne alors l'heure de retour, même approximative.</li>
       <li>Constitution : l'engin prend les agents dans cet ordre ; un agent est sauté s'il ne peut tenir aucun des postes encore libres (par exemple s'il manque encore un ADJ pour chef d'agrès).</li>
       <li>Placement : chef d'agrès d'abord, le plus gradé éligible de l'équipage ; puis conducteur, le plus gradé restant avec le COD requis ; puis chefs d'équipe et équipiers, toujours le plus gradé d'abord.</li>
       <li>Un agent seul à pouvoir tenir un poste lui est réservé : si le plus gradé est le seul à avoir le COD requis, il conduit et le suivant est chef d'agrès.</li>
